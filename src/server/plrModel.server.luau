@@ -59,7 +59,7 @@ local function worldFolder()
 	return workspace:FindFirstChild("WorldBlocks")
 end
 
-local function allParts()
+local function fallbackAllParts()
 	local folder = worldFolder()
 	if not folder then
 		return {}
@@ -75,12 +75,25 @@ local function allParts()
 end
 
 local function getPartAt(position)
-	for _, part in ipairs(allParts()) do
+	if MCRE.GetBlockAtPosition then
+		return MCRE.GetBlockAtPosition(position)
+	end
+
+	for _, part in ipairs(fallbackAllParts()) do
 		if (part.Position - position).Magnitude < 0.1 then
 			return part
 		end
 	end
 	return nil
+end
+
+local function hasSolidBlockAt(x, y, z)
+	if MCRE.HasSolidBlockAtGrid then
+		return MCRE.HasSolidBlockAtGrid(x, y, z)
+	end
+
+	local part = getPartAt(Vector3.new(x * BLOCK_SIZE, y * BLOCK_SIZE, z * BLOCK_SIZE))
+	return part ~= nil and not LIQUID[part.Name]
 end
 
 local function isManagedBlock(part)
@@ -109,6 +122,11 @@ local function characterIntersects(character, position)
 	return false
 end
 
+local fallingQueue = {}
+local fallingQueued = {}
+local fallingWorkerRunning = false
+local MAX_FALLS_PER_STEP = 12
+
 local function settleFallingBlock(runtimeData, part)
 	if not part or not part.Parent or not FALLING[part.Name] then
 		return
@@ -118,8 +136,7 @@ local function settleFallingBlock(runtimeData, part)
 	local finalY = py
 
 	while finalY > 0 do
-		local under = getPartAt(Vector3.new(px * BLOCK_SIZE, (finalY - 1) * BLOCK_SIZE, pz * BLOCK_SIZE))
-		if under then
+		if hasSolidBlockAt(px, finalY - 1, pz) then
 			break
 		end
 		finalY -= 1
@@ -134,6 +151,10 @@ local function settleFallingBlock(runtimeData, part)
 		runtimeData.Changes[gridKey(px, finalY, pz)] = part.Name
 	end
 
+	if MCRE.UnregisterBlockAtGrid then
+		MCRE.UnregisterBlockAtGrid(px, py, pz)
+	end
+
 	part.Anchored = false
 	part.AssemblyLinearVelocity = Vector3.new(0, -35, 0)
 
@@ -145,14 +166,56 @@ local function settleFallingBlock(runtimeData, part)
 		part.AssemblyLinearVelocity = Vector3.zero
 		part.Position = Vector3.new(px * BLOCK_SIZE, finalY * BLOCK_SIZE, pz * BLOCK_SIZE)
 		part.Anchored = true
+		if MCRE.RegisterBlock then
+			MCRE.RegisterBlock(part)
+		end
 	end)
+
+	local above = getPartAt(Vector3.new(px * BLOCK_SIZE, (py + 1) * BLOCK_SIZE, pz * BLOCK_SIZE))
+	if above and FALLING[above.Name] and not fallingQueued[above] then
+		fallingQueued[above] = true
+		table.insert(fallingQueue, { RuntimeData = runtimeData, Part = above })
+	end
+end
+
+local function runFallingWorker()
+	if fallingWorkerRunning then
+		return
+	end
+
+	fallingWorkerRunning = true
+	task.spawn(function()
+		while #fallingQueue > 0 do
+			local processed = 0
+
+			while processed < MAX_FALLS_PER_STEP and #fallingQueue > 0 do
+				local item = table.remove(fallingQueue, 1)
+				local part = item.Part
+				fallingQueued[part] = nil
+				settleFallingBlock(item.RuntimeData, part)
+				processed += 1
+			end
+
+			task.wait()
+		end
+
+		fallingWorkerRunning = false
+	end)
+end
+
+local function enqueueFallingBlock(runtimeData, part)
+	if not part or not part.Parent or not FALLING[part.Name] or fallingQueued[part] then
+		return
+	end
+
+	fallingQueued[part] = true
+	table.insert(fallingQueue, { RuntimeData = runtimeData, Part = part })
+	runFallingWorker()
 end
 
 local function settleAbove(runtimeData, position)
 	local above = getPartAt(position + Vector3.new(0, BLOCK_SIZE, 0))
-	if above and FALLING[above.Name] then
-		settleFallingBlock(runtimeData, above)
-	end
+	enqueueFallingBlock(runtimeData, above)
 end
 
 BreakBlock.OnServerEvent:Connect(function(player, target)
@@ -187,6 +250,12 @@ BreakBlock.OnServerEvent:Connect(function(player, target)
 
 	local snapped = snapToGrid(target.Position)
 	target:Destroy()
+	if MCRE.UnregisterBlockAtGrid then
+		MCRE.UnregisterBlockAtGrid(x, y, z)
+	end
+	if MCRE.RevealNeighborsAround then
+		MCRE.RevealNeighborsAround(x, y, z)
+	end
 	settleAbove(runtime and runtime.WorldData, snapped)
 end)
 
@@ -220,7 +289,13 @@ PlaceBlock.OnServerEvent:Connect(function(player, position, blockName)
 		return
 	end
 
+	local x, y, z = toGrid(snapped)
+
 	if getPartAt(snapped) then
+		return
+	end
+
+	if MCRE.GetLogicalBlockName and MCRE.GetLogicalBlockName(x, y, z) then
 		return
 	end
 
@@ -233,32 +308,46 @@ PlaceBlock.OnServerEvent:Connect(function(player, position, blockName)
 		return
 	end
 
-	local part = template:Clone()
-	part.Name = blockName
-	part.Anchored = true
-	part.CanCollide = not LIQUID[blockName]
-	part.Position = snapped
+	local attributes = nil
 
 	if LIQUID[blockName] then
-		local _, sourceY = toGrid(snapped)
-		part:SetAttribute("LiquidType", blockName)
-		part:SetAttribute("IsLiquidSource", true)
-		part:SetAttribute("IsStaticLiquid", false)
-		part:SetAttribute("FlowDistance", 0)
-		part:SetAttribute("SourceY", sourceY)
+		attributes = {
+			LiquidType = blockName,
+			IsLiquidSource = true,
+			IsStaticLiquid = false,
+			FlowDistance = 0,
+			SourceY = y,
+		}
 	end
 
-	part.Parent = folder
+	local part
+	if MCRE.CreateWorldBlock then
+		part = MCRE.CreateWorldBlock(blockName, x, y, z, attributes)
+	else
+		part = template:Clone()
+		part.Name = blockName
+		part.Anchored = true
+		part.Position = snapped
+		part.Parent = folder
+		if attributes then
+			for name, value in pairs(attributes) do
+				part:SetAttribute(name, value)
+			end
+		end
+	end
+
+	if not part then
+		return
+	end
+
+	part.CanCollide = not LIQUID[blockName]
 
 	local runtime = MCRE.Runtime
-	local x, y, z = toGrid(snapped)
 	if runtime and runtime.WorldData and runtime.WorldData.Changes then
 		runtime.WorldData.Changes[gridKey(x, y, z)] = blockName
 	end
 
 	if FALLING[blockName] then
-		task.defer(function()
-			settleFallingBlock(runtime and runtime.WorldData, part)
-		end)
+		enqueueFallingBlock(runtime and runtime.WorldData, part)
 	end
 end)

@@ -20,6 +20,24 @@ local BLOCK_SIZE = blcGrass.Size.X
 local WORLD_HEIGHT = 96
 local DEFAULT_WATER_LEVEL = 18
 
+local BLOCK_TEMPLATES = {
+	blcGrass = blcGrass,
+	blcDirt = blcDirt,
+	blcStone = blcStone,
+	blcCobblestone = blcCobblestone,
+	blcLog = blcLog,
+	blcLeaves = blcLeaves,
+	blcSand = blcSand,
+	blcGravel = blcGravel,
+	blcWater = blcWater,
+	blcLava = blcLava,
+}
+
+local LIQUID_BLOCKS = {
+	blcWater = true,
+	blcLava = true,
+}
+
 local function snapSeed(seedText)
 	seedText = tostring(seedText or "")
 	if seedText == "" then
@@ -40,13 +58,47 @@ local function blockPos(x, y, z)
 	return Vector3.new(x * BLOCK_SIZE, y * BLOCK_SIZE, z * BLOCK_SIZE)
 end
 
-local function folderFindPartAt(folder, position)
-	for _, obj in ipairs(folder:GetDescendants()) do
-		if obj:IsA("BasePart") and (obj.Position - position).Magnitude < 0.1 then
-			return obj
-		end
+local function gridKey(x, y, z)
+	return tostring(x) .. "|" .. tostring(y) .. "|" .. tostring(z)
+end
+
+local function parseGridKey(key)
+	local x, y, z = string.match(tostring(key), "^(-?%d+)|(-?%d+)|(-?%d+)$")
+	if not x then
+		return nil
 	end
-	return nil
+	return tonumber(x), tonumber(y), tonumber(z)
+end
+
+local function positionToGrid(position)
+	return
+		math.floor(position.X / BLOCK_SIZE + 0.5),
+		math.floor(position.Y / BLOCK_SIZE + 0.5),
+		math.floor(position.Z / BLOCK_SIZE + 0.5)
+end
+
+local function registerBlock(part, x, y, z)
+	if not part then
+		return
+	end
+
+	if not x or not y or not z then
+		local gx, gy, gz = positionToGrid(part.Position)
+		x = x or gx
+		y = y or gy
+		z = z or gz
+	end
+
+	local key = gridKey(x, y, z)
+	MCRE.BlockIndex = MCRE.BlockIndex or {}
+	MCRE.BlockIndex[key] = part
+	part:SetAttribute("GridKey", key)
+end
+
+local function unregisterBlockAt(x, y, z)
+	if MCRE.BlockIndex then
+		MCRE.BlockIndex[gridKey(x, y, z)] = nil
+	end
 end
 
 local function clearWorld()
@@ -54,6 +106,19 @@ local function clearWorld()
 	if old then
 		old:Destroy()
 	end
+
+	MCRE.WorldFolder = nil
+	MCRE.BlockIndex = {}
+	MCRE.HeightAt = nil
+	MCRE.GetBlockAtGrid = nil
+	MCRE.GetBlockAtPosition = nil
+	MCRE.GetLogicalBlockName = nil
+	MCRE.HasSolidBlockAtGrid = nil
+	MCRE.CreateWorldBlock = nil
+	MCRE.RegisterBlock = nil
+	MCRE.UnregisterBlockAtGrid = nil
+	MCRE.RevealBlockAt = nil
+	MCRE.RevealNeighborsAround = nil
 end
 
 local function createWorldFolder()
@@ -64,11 +129,16 @@ local function createWorldFolder()
 end
 
 local function createBlock(template, name, x, y, z, parent)
+	if MCRE.BlockIndex and MCRE.BlockIndex[gridKey(x, y, z)] then
+		return MCRE.BlockIndex[gridKey(x, y, z)]
+	end
+
 	local part = template:Clone()
 	part.Name = name
 	part.Anchored = true
 	part.Position = blockPos(x, y, z)
 	part.Parent = parent
+	registerBlock(part, x, y, z)
 	return part
 end
 
@@ -317,6 +387,101 @@ local function chooseTopMaterial(heightFn, x, z, h)
 	return "Grass"
 end
 
+local function materialToBlockName(material)
+	if material == "Grass" then
+		return "blcGrass"
+	elseif material == "Sand" then
+		return "blcSand"
+	elseif material == "Gravel" then
+		return "blcGravel"
+	end
+	return "blcStone"
+end
+
+local function getGeneratedBlockName(heightFn, x, y, z)
+	if y < 0 then
+		return nil
+	end
+
+	local surfaceY = heightFn.HeightAt(x, z)
+	if y > surfaceY then
+		return nil
+	end
+
+	if shouldCarveCave(heightFn.Seed, x, y, z, surfaceY) then
+		return nil
+	end
+
+	local top = chooseTopMaterial(heightFn, x, z, surfaceY)
+	if y == surfaceY then
+		return materialToBlockName(top)
+	elseif y >= surfaceY - 3 then
+		if top == "Stone" then
+			return "blcStone"
+		end
+		return "blcDirt"
+	end
+
+	return "blcStone"
+end
+
+local function getWorldBlockName(heightFn, changes, x, y, z, width, depth)
+	local key = gridKey(x, y, z)
+	local changed = changes[key]
+
+	if changed == false then
+		return nil
+	elseif type(changed) == "string" and BLOCK_TEMPLATES[changed] then
+		return changed
+	end
+
+	if width and (x < 0 or x >= width) then
+		return nil
+	end
+	if depth and (z < 0 or z >= depth) then
+		return nil
+	end
+
+	return getGeneratedBlockName(heightFn, x, y, z)
+end
+
+local function isExposedBlock(heightFn, changes, x, y, z, width, depth)
+	if not getWorldBlockName(heightFn, changes, x, y, z, width, depth) then
+		return false
+	end
+
+	local directions = {
+		{ 1, 0, 0 },
+		{ -1, 0, 0 },
+		{ 0, 1, 0 },
+		{ 0, -1, 0 },
+		{ 0, 0, 1 },
+		{ 0, 0, -1 },
+	}
+
+	for _, d in ipairs(directions) do
+		local neighbor = getWorldBlockName(heightFn, changes, x + d[1], y + d[2], z + d[3], width, depth)
+		if not neighbor or LIQUID_BLOCKS[neighbor] then
+			return true
+		end
+	end
+
+	return false
+end
+
+local function createNamedBlock(folder, blockName, x, y, z)
+	local template = BLOCK_TEMPLATES[blockName]
+	if not template then
+		return nil
+	end
+
+	local part = createBlock(template, blockName, x, y, z, folder)
+	if LIQUID_BLOCKS[blockName] then
+		part.CanCollide = false
+	end
+	return part
+end
+
 local function maybePlaceTree(folder, heightFn, x, z, surfaceY)
 	if chooseTopMaterial(heightFn, x, z, surfaceY) ~= "Grass" then
 		return
@@ -391,81 +556,104 @@ local function buildWorld(worldData)
 	local heightFn = makeHeightFunction(worldData)
 
 	MCRE.WorldFolder = folder
+	MCRE.BlockIndex = {}
 	MCRE.HeightAt = function(x, z)
 		return heightFn.HeightAt(x, z)
 	end
 	MCRE.WaterLevel = heightFn.WaterLevel
 	MCRE.BlockSize = BLOCK_SIZE
+	MCRE.WorldWidth = width
+	MCRE.WorldDepth = depth
+
+	MCRE.RegisterBlock = function(part)
+		if part and part:IsA("BasePart") then
+			local x, y, z = positionToGrid(part.Position)
+			registerBlock(part, x, y, z)
+		end
+	end
+
+	MCRE.UnregisterBlockAtGrid = function(x, y, z)
+		unregisterBlockAt(x, y, z)
+	end
+
+	MCRE.GetBlockAtGrid = function(x, y, z)
+		local part = MCRE.BlockIndex and MCRE.BlockIndex[gridKey(x, y, z)] or nil
+		if part and part.Parent then
+			return part
+		end
+		unregisterBlockAt(x, y, z)
+		return nil
+	end
+
+	MCRE.GetBlockAtPosition = function(position)
+		local x, y, z = positionToGrid(position)
+		return MCRE.GetBlockAtGrid(x, y, z)
+	end
+
+	MCRE.GetLogicalBlockName = function(x, y, z)
+		local part = MCRE.GetBlockAtGrid(x, y, z)
+		if part then
+			return part.Name
+		end
+		return getWorldBlockName(heightFn, changes, x, y, z, width, depth)
+	end
+
+	MCRE.HasSolidBlockAtGrid = function(x, y, z)
+		local name = MCRE.GetLogicalBlockName(x, y, z)
+		return name ~= nil and not LIQUID_BLOCKS[name]
+	end
+
+	MCRE.CreateWorldBlock = function(blockName, x, y, z, attributes)
+		local part = createNamedBlock(folder, blockName, x, y, z)
+		if part and attributes then
+			for name, value in pairs(attributes) do
+				part:SetAttribute(name, value)
+			end
+		end
+		return part
+	end
+
+	MCRE.RevealBlockAt = function(x, y, z)
+		if MCRE.GetBlockAtGrid(x, y, z) then
+			return nil
+		end
+
+		local blockName = getWorldBlockName(heightFn, changes, x, y, z, width, depth)
+		if not blockName or LIQUID_BLOCKS[blockName] then
+			return nil
+		end
+
+		return createNamedBlock(folder, blockName, x, y, z)
+	end
+
+	MCRE.RevealNeighborsAround = function(x, y, z)
+		local directions = {
+			{ 1, 0, 0 },
+			{ -1, 0, 0 },
+			{ 0, 1, 0 },
+			{ 0, -1, 0 },
+			{ 0, 0, 1 },
+			{ 0, 0, -1 },
+		}
+
+		for _, d in ipairs(directions) do
+			MCRE.RevealBlockAt(x + d[1], y + d[2], z + d[3])
+		end
+	end
 
 	local placed = 0
 
 	for x = 0, width - 1 do
 		for z = 0, depth - 1 do
 			local surfaceY = heightFn.HeightAt(x, z)
-			local top = chooseTopMaterial(heightFn, x, z, surfaceY)
 
 			for y = 0, surfaceY do
-				local key = tostring(x) .. "|" .. tostring(y) .. "|" .. tostring(z)
-
-				if changes[key] ~= false and not shouldCarveCave(heightFn.Seed, x, y, z, surfaceY) then
-					local template
-					local name
-
-					if y == surfaceY then
-						if top == "Grass" then
-							template = blcGrass
-							name = "blcGrass"
-						elseif top == "Sand" then
-							template = blcSand
-							name = "blcSand"
-						elseif top == "Gravel" then
-							template = blcGravel
-							name = "blcGravel"
-						else
-							template = blcStone
-							name = "blcStone"
-						end
-					elseif y >= surfaceY - 3 then
-						if top == "Stone" then
-							template = blcStone
-							name = "blcStone"
-						else
-							template = blcDirt
-							name = "blcDirt"
-						end
-					else
-						template = blcStone
-						name = "blcStone"
-					end
-
-					if changes[key] and type(changes[key]) == "string" then
-						local overrideName = tostring(changes[key])
-						local map = {
-							blcGrass = blcGrass,
-							blcDirt = blcDirt,
-							blcStone = blcStone,
-							blcCobblestone = blcCobblestone,
-							blcLog = blcLog,
-							blcLeaves = blcLeaves,
-							blcSand = blcSand,
-							blcGravel = blcGravel,
-							blcWater = blcWater,
-							blcLava = blcLava,
-						}
-						if map[overrideName] then
-							template = map[overrideName]
-							name = overrideName
-						end
-					end
-
-					local part = createBlock(template, name, x, y, z, folder)
-					if name == "blcWater" or name == "blcLava" then
-						part.CanCollide = false
-					end
+				if isExposedBlock(heightFn, changes, x, y, z, width, depth) then
+					createNamedBlock(folder, getWorldBlockName(heightFn, changes, x, y, z, width, depth), x, y, z)
 				end
 
 				placed += 1
-				if placed % 350 == 0 then
+				if placed % 1800 == 0 then
 					task.wait()
 				end
 			end
@@ -473,7 +661,7 @@ local function buildWorld(worldData)
 			local lavaSurfaceY = heightFn.GetLavaSurfaceY(x, z)
 			if lavaSurfaceY and surfaceY < lavaSurfaceY then
 				for y = surfaceY + 1, lavaSurfaceY do
-					local key = tostring(x) .. "|" .. tostring(y) .. "|" .. tostring(z)
+					local key = gridKey(x, y, z)
 					if changes[key] ~= false then
 						local part = createBlock(blcLava, "blcLava", x, y, z, folder)
 						setLiquidState(part, "blcLava", false, true, 0, lavaSurfaceY)
@@ -483,12 +671,24 @@ local function buildWorld(worldData)
 				local waterSurfaceY = heightFn.GetWaterSurfaceY(x, z)
 				if waterSurfaceY and surfaceY < waterSurfaceY then
 					for y = surfaceY + 1, waterSurfaceY do
-						local key = tostring(x) .. "|" .. tostring(y) .. "|" .. tostring(z)
+						local key = gridKey(x, y, z)
 						if changes[key] ~= false then
 							local part = createBlock(blcWater, "blcWater", x, y, z, folder)
 							setLiquidState(part, "blcWater", false, true, 0, waterSurfaceY)
 						end
 					end
+				end
+			end
+		end
+	end
+
+	for key, blockName in pairs(changes) do
+		if type(blockName) == "string" and BLOCK_TEMPLATES[blockName] then
+			local x, y, z = parseGridKey(key)
+			if x and not MCRE.GetBlockAtGrid(x, y, z) then
+				local part = createNamedBlock(folder, blockName, x, y, z)
+				if part and LIQUID_BLOCKS[blockName] then
+					setLiquidState(part, blockName, true, false, 0, y)
 				end
 			end
 		end

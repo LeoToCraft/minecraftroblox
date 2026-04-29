@@ -69,6 +69,23 @@ shade.BackgroundTransparency = 0.35
 shade.BorderSizePixel = 0
 shade.Parent = root
 
+local function corner(instance, radius)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius or 6)
+	c.Parent = instance
+	return c
+end
+
+local function stroke(instance, color, transparency, thickness)
+	local s = Instance.new("UIStroke")
+	s.Color = color or Color3.fromRGB(235, 235, 235)
+	s.Transparency = transparency or 0.35
+	s.Thickness = thickness or 1
+	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	s.Parent = instance
+	return s
+end
+
 local function text(parent, value, size, position, textSize, alignX)
 	local t = Instance.new("TextLabel")
 	t.BackgroundTransparency = 1
@@ -76,10 +93,11 @@ local function text(parent, value, size, position, textSize, alignX)
 	t.Position = position
 	t.Text = value
 	t.TextColor3 = Color3.new(1, 1, 1)
-	t.TextStrokeTransparency = 0.6
-	t.Font = Enum.Font.SourceSansBold
+	t.TextStrokeTransparency = 0.72
+	t.Font = Enum.Font.GothamBold
 	t.TextSize = textSize
 	t.TextXAlignment = alignX or Enum.TextXAlignment.Center
+	t.TextWrapped = true
 	t.Parent = parent
 	return t
 end
@@ -88,14 +106,17 @@ local function button(parent, value, size, position)
 	local b = Instance.new("TextButton")
 	b.Size = size
 	b.Position = position
-	b.BackgroundColor3 = Color3.fromRGB(140, 140, 140)
+	b.BackgroundColor3 = Color3.fromRGB(72, 93, 78)
 	b.BorderSizePixel = 0
 	b.Text = value
 	b.TextColor3 = Color3.new(1, 1, 1)
-	b.TextStrokeTransparency = 0.7
-	b.Font = Enum.Font.SourceSansBold
-	b.TextSize = 24
+	b.TextStrokeTransparency = 0.78
+	b.Font = Enum.Font.GothamBold
+	b.TextSize = 22
+	b.TextWrapped = true
 	b.Parent = parent
+	corner(b, 6)
+	stroke(b, Color3.fromRGB(218, 218, 205), 0.52, 1)
 	return b
 end
 
@@ -103,15 +124,17 @@ local function panel(parent, size, position)
 	local p = Instance.new("Frame")
 	p.Size = size
 	p.Position = position
-	p.BackgroundColor3 = Color3.new(0, 0, 0)
-	p.BackgroundTransparency = 0.3
+	p.BackgroundColor3 = Color3.fromRGB(18, 24, 25)
+	p.BackgroundTransparency = 0.12
 	p.BorderSizePixel = 0
 	p.Visible = false
 	p.Parent = parent
+	corner(p, 8)
+	stroke(p, Color3.fromRGB(228, 228, 210), 0.68, 1)
 	return p
 end
 
-local title = text(root, "Minecraft: Roblox Edition", UDim2.new(0, 760, 0, 80), UDim2.new(0.5, -380, 0, 40), 40)
+local title = text(root, "Minecraft: Roblox Edition", UDim2.new(0, 760, 0, 80), UDim2.new(0.5, -380, 0, 40), 42)
 local version = text(root, versionText, UDim2.new(0, 240, 0, 24), UDim2.new(1, -250, 1, -35), 18, Enum.TextXAlignment.Right)
 
 local homeFrame = Instance.new("Frame")
@@ -165,18 +188,21 @@ local worldsBack = button(worldsPanel, "Back", UDim2.new(0, 120, 0, 38), UDim2.n
 local worldsCreate = button(worldsPanel, "Create new world", UDim2.new(0, 190, 0, 38), UDim2.new(0, 40, 0, 438))
 local worldsDelete = button(worldsPanel, "Delete world", UDim2.new(0, 160, 0, 38), UDim2.new(0, 250, 0, 438))
 local worldsRename = button(worldsPanel, "Rename world", UDim2.new(0, 160, 0, 38), UDim2.new(0, 430, 0, 438))
+local worldSizeButton = button(worldsPanel, "Size: Large", UDim2.new(0, 190, 0, 36), UDim2.new(0, 40, 0, 394))
 
 local renameBox = Instance.new("TextBox")
 renameBox.Size = UDim2.new(0, 220, 0, 36)
 renameBox.Position = UDim2.new(1, -260, 0, 394)
-renameBox.BackgroundColor3 = Color3.fromRGB(180, 180, 180)
-renameBox.TextColor3 = Color3.new(0, 0, 0)
+renameBox.BackgroundColor3 = Color3.fromRGB(226, 224, 206)
+renameBox.TextColor3 = Color3.fromRGB(22, 24, 23)
 renameBox.BorderSizePixel = 0
-renameBox.Font = Enum.Font.SourceSans
-renameBox.TextSize = 22
+renameBox.Font = Enum.Font.Gotham
+renameBox.TextSize = 20
 renameBox.ClearTextOnFocus = false
 renameBox.PlaceholderText = "New name"
 renameBox.Parent = worldsPanel
+corner(renameBox, 6)
+stroke(renameBox, Color3.fromRGB(35, 42, 38), 0.68, 1)
 
 text(multiPanel, "Multiplayer", UDim2.new(1, 0, 0, 36), UDim2.new(0, 0, 0, 20), 30)
 local multiBack = button(multiPanel, "Back", UDim2.new(0, 120, 0, 38), UDim2.new(1, -160, 0, 438))
@@ -197,12 +223,15 @@ barBg.Position = UDim2.new(0.5, -260, 0, 70)
 barBg.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 barBg.BorderSizePixel = 0
 barBg.Parent = loadingPanel
+corner(barBg, 6)
+stroke(barBg, Color3.fromRGB(230, 230, 210), 0.62, 1)
 
 local barFill = Instance.new("Frame")
 barFill.Size = UDim2.new(0, 0, 1, 0)
-barFill.BackgroundColor3 = Color3.fromRGB(75, 170, 70)
+barFill.BackgroundColor3 = Color3.fromRGB(92, 176, 96)
 barFill.BorderSizePixel = 0
 barFill.Parent = barBg
+corner(barFill, 6)
 
 local percentText = text(loadingPanel, "0%", UDim2.new(0, 520, 0, 34), UDim2.new(0.5, -260, 0, 112), 30)
 text(loadingPanel, "Loading World", UDim2.new(0, 520, 0, 30), UDim2.new(0.5, -260, 0, 152), 24)
@@ -213,6 +242,7 @@ local worldButtons = {}
 local serverButtons = {}
 local cachedWorlds = {}
 local cachedServers = {}
+local selectedWorldSize = "Large"
 local currentGraphics = 2
 local currentShowDebug = true
 local fpsFrames = 0
@@ -318,6 +348,25 @@ local function refreshSettingsText()
 	debugToggle.Text = currentShowDebug and "ON" or "OFF"
 end
 
+local worldSizeOrder = { "Small", "Medium", "Large", "Huge" }
+
+local function refreshWorldSizeText()
+	worldSizeButton.Text = "Size: " .. selectedWorldSize
+end
+
+local function cycleWorldSize()
+	for index, sizeName in ipairs(worldSizeOrder) do
+		if sizeName == selectedWorldSize then
+			selectedWorldSize = worldSizeOrder[(index % #worldSizeOrder) + 1]
+			refreshWorldSizeText()
+			return
+		end
+	end
+
+	selectedWorldSize = "Large"
+	refreshWorldSizeText()
+end
+
 local function clearDynamic(container, fixed)
 	for _, obj in ipairs(container:GetChildren()) do
 		if not fixed[obj] then
@@ -353,7 +402,7 @@ local function rebuildWorldList()
 
 		local btn = button(worldsPanel, titleText, UDim2.new(0, 780, 0, 64), UDim2.new(0, 40, 0, y))
 		btn.TextSize = 22
-		btn.BackgroundColor3 = selectedWorldSlot == slot and Color3.fromRGB(110, 150, 210) or Color3.fromRGB(140, 140, 140)
+		btn.BackgroundColor3 = selectedWorldSlot == slot and Color3.fromRGB(96, 126, 92) or Color3.fromRGB(56, 70, 62)
 
 		btn.MouseButton1Click:Connect(function()
 			selectedWorldSlot = slot
@@ -389,7 +438,7 @@ local function rebuildServerList()
 
 		local btn = button(multiPanel, labelText, UDim2.new(0, 780, 0, 56), UDim2.new(0, 40, 0, y))
 		btn.TextSize = 22
-		btn.BackgroundColor3 = selectedServer == index and Color3.fromRGB(110, 150, 210) or Color3.fromRGB(140, 140, 140)
+		btn.BackgroundColor3 = selectedServer == index and Color3.fromRGB(96, 126, 92) or Color3.fromRGB(56, 70, 62)
 
 		btn.MouseButton1Click:Connect(function()
 			selectedServer = index
@@ -451,8 +500,12 @@ end)
 
 worldsCreate.MouseButton1Click:Connect(function()
 	local targetSlot = selectedWorldSlot or 1
-	CreateWorld:InvokeServer(targetSlot, "New World", "Medium", "Normal", "")
+	CreateWorld:InvokeServer(targetSlot, "New World", selectedWorldSize, "Normal", "")
 	refreshWorldData()
+end)
+
+worldSizeButton.MouseButton1Click:Connect(function()
+	cycleWorldSize()
 end)
 
 worldsDelete.MouseButton1Click:Connect(function()

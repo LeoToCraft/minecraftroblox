@@ -54,6 +54,10 @@ local function getAllParts(folder)
 end
 
 local function buildIndex(folder)
+	if MCRE.BlockIndex then
+		return MCRE.BlockIndex
+	end
+
 	local index = {}
 	for _, part in ipairs(getAllParts(folder)) do
 		local x, y, z = positionToGrid(part.Position)
@@ -70,6 +74,29 @@ local function isSolid(part)
 	return part ~= nil and not isLiquid(part.Name)
 end
 
+local function getCell(index, x, y, z)
+	local key = gridKey(x, y, z)
+	local part = index[key]
+	if part and part.Parent then
+		return part
+	end
+	index[key] = nil
+	return nil
+end
+
+local function hasSolidAt(index, x, y, z)
+	local part = getCell(index, x, y, z)
+	if part then
+		return isSolid(part)
+	end
+
+	if MCRE.HasSolidBlockAtGrid then
+		return MCRE.HasSolidBlockAtGrid(x, y, z)
+	end
+
+	return false
+end
+
 local function replaceWithCobblestone(folder, index, x, y, z)
 	local key = gridKey(x, y, z)
 	local old = index[key]
@@ -84,11 +111,14 @@ local function replaceWithCobblestone(folder, index, x, y, z)
 	part.Position = gridToPosition(x, y, z)
 	part.Parent = folder
 	index[key] = part
+	if MCRE.RegisterBlock then
+		MCRE.RegisterBlock(part)
+	end
 end
 
 local function createLiquid(folder, index, liquidName, x, y, z, flowDistance, sourceY, isSource)
 	local key = gridKey(x, y, z)
-	local existing = index[key]
+	local existing = getCell(index, x, y, z)
 
 	if existing then
 		if existing.Name == liquidName then
@@ -119,6 +149,9 @@ local function createLiquid(folder, index, liquidName, x, y, z, flowDistance, so
 	part.Parent = folder
 
 	index[key] = part
+	if MCRE.RegisterBlock then
+		MCRE.RegisterBlock(part)
+	end
 	return part
 end
 
@@ -129,7 +162,7 @@ local function cleanupOrphans(folder, liquidName)
 	local sources = {}
 
 	for key, part in pairs(index) do
-		if part.Name == liquidName and part:GetAttribute("IsStaticLiquid") ~= true then
+		if part and part.Parent and part.Name == liquidName and part:GetAttribute("IsStaticLiquid") ~= true then
 			all[key] = part
 			if part:GetAttribute("IsLiquidSource") == true then
 				local x, y, z = positionToGrid(part.Position)
@@ -175,7 +208,13 @@ local function cleanupOrphans(folder, liquidName)
 
 	for key, part in pairs(all) do
 		if not seen[key] then
+			local x, y, z = positionToGrid(part.Position)
 			part:Destroy()
+			if MCRE.UnregisterBlockAtGrid then
+				MCRE.UnregisterBlockAtGrid(x, y, z)
+			else
+				index[key] = nil
+			end
 		end
 	end
 end
@@ -190,8 +229,8 @@ local function updateLiquid(liquidName)
 	local index = buildIndex(folder)
 
 	local candidates = {}
-	for _, part in ipairs(getAllParts(folder)) do
-		if part.Name == liquidName and part:GetAttribute("IsStaticLiquid") ~= true then
+	for _, part in pairs(index) do
+		if part and part.Parent and part.Name == liquidName and part:GetAttribute("IsStaticLiquid") ~= true then
 			table.insert(candidates, part)
 		end
 	end
@@ -223,10 +262,9 @@ local function updateLiquid(liquidName)
 		local flowDistance = part:GetAttribute("FlowDistance") or 0
 		local sourceY = part:GetAttribute("SourceY") or y
 
-		local belowKey = gridKey(x, y - 1, z)
-		local below = index[belowKey]
+		local below = getCell(index, x, y - 1, z)
 
-		if y > 0 and not isSolid(below) then
+		if y > 0 and not hasSolidAt(index, x, y - 1, z) then
 			if below == nil then
 				local created = createLiquid(folder, index, liquidName, x, y - 1, z, flowDistance, sourceY, false)
 				if created then
@@ -258,12 +296,11 @@ local function updateLiquid(liquidName)
 						continue
 					end
 
-					local targetKey = gridKey(nx, targetY, nz)
-					local side = index[targetKey]
-					local under = index[gridKey(nx, targetY - 1, nz)]
+					local side = getCell(index, nx, targetY, nz)
+					local under = getCell(index, nx, targetY - 1, nz)
 
-					if side == nil then
-						if under and isSolid(under) then
+					if side == nil and not hasSolidAt(index, nx, targetY, nz) then
+						if hasSolidAt(index, nx, targetY - 1, nz) then
 							local created = createLiquid(folder, index, liquidName, nx, targetY, nz, flowDistance + 1, sourceY, false)
 							if created then
 								createdCount += 1

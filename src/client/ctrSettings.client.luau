@@ -77,6 +77,23 @@ ui.ResetOnSpawn = false
 ui.IgnoreGuiInset = true
 ui.Parent = playerGui
 
+local function corner(instance, radius)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius or 6)
+	c.Parent = instance
+	return c
+end
+
+local function stroke(instance, color, transparency, thickness)
+	local s = Instance.new("UIStroke")
+	s.Color = color or Color3.fromRGB(230, 230, 220)
+	s.Transparency = transparency or 0.42
+	s.Thickness = thickness or 1
+	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	s.Parent = instance
+	return s
+end
+
 local crosshair = Instance.new("Frame")
 crosshair.Size = UDim2.new(0, 20, 0, 20)
 crosshair.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -104,25 +121,31 @@ local hotbar = Instance.new("Frame")
 hotbar.Size = UDim2.new(0, 560, 0, 60)
 hotbar.AnchorPoint = Vector2.new(0.5, 1)
 hotbar.Position = UDim2.new(0.5, 0, 1, -18)
-hotbar.BackgroundTransparency = 1
+hotbar.BackgroundColor3 = Color3.fromRGB(16, 19, 19)
+hotbar.BackgroundTransparency = 0.28
+hotbar.BorderSizePixel = 0
 hotbar.Parent = ui
+corner(hotbar, 8)
+stroke(hotbar, Color3.fromRGB(232, 230, 210), 0.62, 1)
 
 local inventoryFrame = Instance.new("Frame")
 inventoryFrame.Size = UDim2.new(0, 660, 0, 370)
 inventoryFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 inventoryFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-inventoryFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-inventoryFrame.BackgroundTransparency = 0.1
+inventoryFrame.BackgroundColor3 = Color3.fromRGB(18, 24, 25)
+inventoryFrame.BackgroundTransparency = 0.08
 inventoryFrame.BorderSizePixel = 0
 inventoryFrame.Visible = false
 inventoryFrame.Parent = ui
+corner(inventoryFrame, 8)
+stroke(inventoryFrame, Color3.fromRGB(232, 230, 210), 0.56, 1)
 
 local inventoryTitle = Instance.new("TextLabel")
 inventoryTitle.Size = UDim2.new(1, 0, 0, 42)
 inventoryTitle.BackgroundTransparency = 1
 inventoryTitle.Text = "Inventory"
 inventoryTitle.TextColor3 = Color3.new(1, 1, 1)
-inventoryTitle.Font = Enum.Font.SourceSansBold
+inventoryTitle.Font = Enum.Font.GothamBold
 inventoryTitle.TextSize = 28
 inventoryTitle.Parent = inventoryFrame
 
@@ -335,12 +358,12 @@ local function updateSlotVisual(index)
 		return
 	end
 
-	slot.BackgroundColor3 = index == selected and Color3.fromRGB(185, 185, 185) or Color3.fromRGB(85, 85, 85)
+	slot.BackgroundColor3 = index == selected and Color3.fromRGB(215, 205, 158) or Color3.fromRGB(54, 64, 58)
 	slot.Image.Image = getItemImage(inventory[index].iconName)
 	slot.Number.Text = tostring(index % 10)
 
 	if inventoryButtons[index] then
-		inventoryButtons[index].BackgroundColor3 = index == selected and Color3.fromRGB(125, 125, 125) or Color3.fromRGB(70, 70, 70)
+		inventoryButtons[index].BackgroundColor3 = index == selected and Color3.fromRGB(92, 122, 92) or Color3.fromRGB(49, 58, 54)
 	end
 end
 
@@ -375,9 +398,11 @@ local function buildHotbar()
 	for i = 1, #inventory do
 		local slot = Instance.new("Frame")
 		slot.Size = UDim2.new(0, 50, 0, 50)
-		slot.Position = UDim2.new(0, (i - 1) * 56, 0, 0)
+		slot.Position = UDim2.new(0, 5 + (i - 1) * 55, 0, 5)
 		slot.BorderSizePixel = 0
 		slot.Parent = hotbar
+		corner(slot, 6)
+		stroke(slot, Color3.fromRGB(238, 235, 215), 0.6, 1)
 
 		local image = Instance.new("ImageLabel")
 		image.Name = "Image"
@@ -393,7 +418,7 @@ local function buildHotbar()
 		num.Position = UDim2.new(0, 2, 0, 0)
 		num.BackgroundTransparency = 1
 		num.TextColor3 = Color3.new(1, 1, 1)
-		num.Font = Enum.Font.SourceSansBold
+		num.Font = Enum.Font.GothamBold
 		num.TextSize = 14
 		num.Parent = slot
 
@@ -414,8 +439,11 @@ local function buildInventory()
 		btn.Size = UDim2.new(0, cell, 0, cell)
 		btn.Position = UDim2.new(0, col * (cell + gap), 0, row * (cell + gap))
 		btn.BorderSizePixel = 0
+		btn.BackgroundColor3 = Color3.fromRGB(49, 58, 54)
 		btn.Text = ""
 		btn.Parent = inventoryGrid
+		corner(btn, 6)
+		stroke(btn, Color3.fromRGB(235, 232, 210), 0.58, 1)
 
 		local image = Instance.new("ImageLabel")
 		image.Size = UDim2.new(1, -16, 1, -34)
@@ -431,8 +459,9 @@ local function buildInventory()
 		label.BackgroundTransparency = 1
 		label.Text = item.title
 		label.TextColor3 = Color3.new(1, 1, 1)
-		label.Font = Enum.Font.SourceSansBold
+		label.Font = Enum.Font.GothamBold
 		label.TextSize = 16
+		label.TextWrapped = true
 		label.Parent = btn
 
 		btn.MouseButton1Click:Connect(function()

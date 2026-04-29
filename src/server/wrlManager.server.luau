@@ -109,11 +109,13 @@ end
 local function normalizeWorldSize(sizeName)
 	sizeName = tostring(sizeName or "Small")
 	if sizeName == "Medium" then
-		return "Medium", 128, 128
+		return "Medium", 192, 192
 	elseif sizeName == "Large" then
-		return "Large", 256, 256
+		return "Large", 320, 320
+	elseif sizeName == "Huge" then
+		return "Huge", 512, 512
 	end
-	return "Small", 64, 64
+	return "Small", 96, 96
 end
 
 local function normalizeWorldType(worldType)
