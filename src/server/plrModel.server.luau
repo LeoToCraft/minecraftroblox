@@ -8,7 +8,7 @@ local rmtGame = ReplicatedStorage:WaitForChild("rmtGame")
 local BreakBlock = rmtGame:WaitForChild("BreakBlock")
 local PlaceBlock = rmtGame:WaitForChild("PlaceBlock")
 
-local blocksFolder = ServerStorage:WaitForChild("blcStorage")
+local blocksFolder = ServerStorage:WaitForChild("blcStorage") 
 
 local BLOCKS = {
 	blcGrass = blocksFolder:WaitForChild("GrassBlock"),

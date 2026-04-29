@@ -12,7 +12,7 @@ local blcCobblestone = blocks:WaitForChild("CobblestoneBlock")
 local blcLog = blocks:WaitForChild("LogBlock")
 local blcLeaves = blocks:WaitForChild("LeavesBlock")
 local blcSand = blocks:WaitForChild("SandBlock")
-local blcGravel = blocks:WaitForChild("GravelBlock")
+local blcGravel = blocks:WaitForChild("GravelBlock") 
 local blcWater = blocks:WaitForChild("WaterBlock")
 local blcLava = blocks:WaitForChild("LavaBlock")
 

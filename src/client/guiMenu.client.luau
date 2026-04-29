@@ -36,7 +36,7 @@ local function getImage(asset)
 	local dec = asset:FindFirstChildWhichIsA("Decal", true)
 	if dec then
 		return dec.Texture
-	end
+	end 
 	local tex = asset:FindFirstChildWhichIsA("Texture", true)
 	if tex then
 		return tex.Texture

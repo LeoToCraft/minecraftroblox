@@ -11,7 +11,7 @@ local camera = Workspace.CurrentCamera
 
 local rmtGame = ReplicatedStorage:WaitForChild("rmtGame")
 local BreakBlock = rmtGame:WaitForChild("BreakBlock")
-local PlaceBlock = rmtGame:WaitForChild("PlaceBlock")
+local PlaceBlock = rmtGame:WaitForChild("PlaceBlock") 
 local SetCrouchState = rmtGame:WaitForChild("SetCrouchState")
 
 local guiAssets = ReplicatedStorage:WaitForChild("guiAssets")

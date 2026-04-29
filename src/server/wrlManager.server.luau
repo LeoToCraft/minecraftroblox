@@ -11,7 +11,7 @@ Players.CharacterAutoLoads = false
 _G.MCRE = _G.MCRE or {}
 local MCRE = _G.MCRE
 
-MCRE.Version = "0.0.8_01a"
+MCRE.Version = "0.0.9a"
 MCRE.Runtime = MCRE.Runtime or {
 	IsWorldServer = false,
 	WorldLoaded = false,
