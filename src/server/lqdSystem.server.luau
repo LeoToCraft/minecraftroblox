@@ -5,16 +5,16 @@ local MCRE = _G.MCRE
 
 local blocks = ServerStorage:WaitForChild("blcStorage")
 
-local blcGrass = blocks:WaitForChild("blcGrass")
-local blcDirt = blocks:WaitForChild("blcDirt")
-local blcStone = blocks:WaitForChild("blcStone")
-local blcCobblestone = blocks:WaitForChild("blcCobblestone")
-local blcLog = blocks:WaitForChild("blcLog")
-local blcLeaves = blocks:WaitForChild("blcLeaves")
-local blcSand = blocks:WaitForChild("blcSand")
-local blcGravel = blocks:WaitForChild("blcGravel")
-local blcWater = blocks:WaitForChild("blcWater")
-local blcLava = blocks:WaitForChild("blcLava")
+local blcGrass = blocks:WaitForChild("GrassBlock")
+local blcDirt = blocks:WaitForChild("DirtBlock")
+local blcStone = blocks:WaitForChild("StoneBlock")
+local blcCobblestone = blocks:WaitForChild("CobblestoneBlock")
+local blcLog = blocks:WaitForChild("LogBlock")
+local blcLeaves = blocks:WaitForChild("LeavesBlock")
+local blcSand = blocks:WaitForChild("SandBlock")
+local blcGravel = blocks:WaitForChild("GravelBlock")
+local blcWater = blocks:WaitForChild("WaterBlock")
+local blcLava = blocks:WaitForChild("LavaBlock")
 
 local BLOCK_SIZE = blcGrass.Size.X
 local WORLD_HEIGHT = 96

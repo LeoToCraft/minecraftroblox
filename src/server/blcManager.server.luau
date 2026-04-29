@@ -4,10 +4,10 @@ _G.MCRE = _G.MCRE or {}
 local MCRE = _G.MCRE
 
 local blocks = ServerStorage:WaitForChild("blcStorage")
-local blcGrass = blocks:WaitForChild("blcGrass")
-local blcCobblestone = blocks:WaitForChild("blcCobblestone")
-local blcWater = blocks:WaitForChild("blcWater")
-local blcLava = blocks:WaitForChild("blcLava")
+local blcGrass = blocks:WaitForChild("GrassBlock")
+local blcCobblestone = blocks:WaitForChild("CobblestoneBlock")
+local blcWater = blocks:WaitForChild("WaterBlock")
+local blcLava = blocks:WaitForChild("LavaBlock")
  
 local BLOCK_SIZE = blcGrass.Size.X
 

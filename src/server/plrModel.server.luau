@@ -11,16 +11,16 @@ local PlaceBlock = rmtGame:WaitForChild("PlaceBlock")
 local blocksFolder = ServerStorage:WaitForChild("blcStorage")
 
 local BLOCKS = {
-	blcGrass = blocksFolder:WaitForChild("blcGrass"),
-	blcDirt = blocksFolder:WaitForChild("blcDirt"),
-	blcStone = blocksFolder:WaitForChild("blcStone"),
-	blcCobblestone = blocksFolder:WaitForChild("blcCobblestone"),
-	blcLog = blocksFolder:WaitForChild("blcLog"),
-	blcLeaves = blocksFolder:WaitForChild("blcLeaves"),
-	blcSand = blocksFolder:WaitForChild("blcSand"),
-	blcGravel = blocksFolder:WaitForChild("blcGravel"),
-	blcWater = blocksFolder:WaitForChild("blcWater"),
-	blcLava = blocksFolder:WaitForChild("blcLava"),
+	blcGrass = blocksFolder:WaitForChild("GrassBlock"),
+	blcDirt = blocksFolder:WaitForChild("DirtBlock"),
+	blcStone = blocksFolder:WaitForChild("StoneBlock"),
+	blcCobblestone = blocksFolder:WaitForChild("CobblestoneBlock"),
+	blcLog = blocksFolder:WaitForChild("LogBlock"),
+	blcLeaves = blocksFolder:WaitForChild("LeavesBlock"),
+	blcSand = blocksFolder:WaitForChild("SandBlock"),
+	blcGravel = blocksFolder:WaitForChild("GravelBlock"),
+	blcWater = blocksFolder:WaitForChild("WaterBlock"),
+	blcLava = blocksFolder:WaitForChild("LavaBlock"),
 }
 
 local BLOCK_SIZE = BLOCKS.blcGrass.Size.X

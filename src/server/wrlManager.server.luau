@@ -11,7 +11,7 @@ Players.CharacterAutoLoads = false
 _G.MCRE = _G.MCRE or {}
 local MCRE = _G.MCRE
 
-MCRE.Version = "Alpha 0.0.8a"
+MCRE.Version = "0.0.8_01a"
 MCRE.Runtime = MCRE.Runtime or {
 	IsWorldServer = false,
 	WorldLoaded = false,
@@ -38,7 +38,7 @@ local HostCurrentWorld = rmtGame:WaitForChild("HostCurrentWorld")
 local JoinHostedServer = rmtGame:WaitForChild("JoinHostedServer")
 
 local blocksFolder = ServerStorage:WaitForChild("blcStorage")
-local grassBlock = blocksFolder:WaitForChild("blcGrass")
+local grassBlock = blocksFolder:WaitForChild("GrassBlock")
 
 local WORLDS_STORE = DataStoreService:GetDataStore("MCRE_W_Alpha_0_0_7")
 local SETTINGS_STORE = DataStoreService:GetDataStore("MCRE_S_Alpha_0_0_7")
