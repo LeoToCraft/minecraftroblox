@@ -23,7 +23,7 @@ local HostCurrentWorld = rmtGame:WaitForChild("HostCurrentWorld")
 local JoinHostedServer = rmtGame:WaitForChild("JoinHostedServer")
 local CommandFeedback = rmtGame:WaitForChild("CommandFeedback", 5)
 
-local versionText = "0.0.13a"
+local versionText = "0.0.14a"
 
 local backgroundAsset = guiAssets:WaitForChild("gui"):WaitForChild("gui_menu")
 

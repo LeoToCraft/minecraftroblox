@@ -31,7 +31,7 @@ local blcLava = getBlockTemplate("blcLava", "LavaBlock")
 
 local BLOCK_SIZE = blcGrass.Size.X
 local WORLD_HEIGHT = 96
-local DEFAULT_WATER_LEVEL = 18
+local DEFAULT_WATER_LEVEL = 20
 local CHUNK_SIZE = 16
 local INITIAL_LOAD_RADIUS = 0
 local STREAM_LOAD_RADIUS = 24
@@ -215,25 +215,27 @@ local function makeHeightFunction(worldData)
 	local isSuperflat = tostring(worldData.WorldType or "Normal") == "Superflat"
 
 	local function riverField(x, z)
-		local n1 = math.noise((x + o.a * 100) * 0.007, (z + o.b * 100) * 0.007)
-		local n2 = math.noise((x + o.c * 100) * 0.014, (z + o.d * 100) * 0.014)
+		local n1 = math.noise((x + o.a * 100) * 0.006, (z + o.b * 100) * 0.006)
+		local n2 = math.noise((x + o.c * 100) * 0.012, (z + o.d * 100) * 0.012)
 		return math.abs(n1 * 0.78 + n2 * 0.22)
 	end
 
 	local function lakeField(x, z)
-		return math.noise((x + o.e * 100) * 0.018, (z + o.f * 100) * 0.018)
+		local basin = math.noise((x + o.e * 100) * 0.01, (z + o.f * 100) * 0.01)
+		local detail = math.noise((x + o.g * 70) * 0.026, (z + o.h * 70) * 0.026)
+		return basin * 0.8 + detail * 0.2
 	end
 
 	local function mountainField(x, z)
-		local mass = math.max(0, math.noise((x + o.g) * 0.008, (z + o.h) * 0.008))
-		local peaks = math.max(0, math.noise((x + o.a * 13) * 0.018, (z + o.b * 13) * 0.018))
-		return math.clamp(mass * 0.85 + peaks * 0.45, 0, 1.35)
+		local mass = math.max(0, math.noise((x + o.g) * 0.0065, (z + o.h) * 0.0065))
+		local peaks = math.max(0, math.noise((x + o.a * 13) * 0.015, (z + o.b * 13) * 0.015))
+		return math.clamp(mass * 0.78 + peaks * 0.32, 0, 1.15)
 	end
 
 	local function cliffField(x, z)
-		local ridge = 1 - math.abs(math.noise((x + o.c * 9) * 0.016, (z + o.d * 9) * 0.016))
-		local sharp = math.max(0, math.noise((x + o.e * 7) * 0.038, (z + o.f * 7) * 0.038))
-		return math.clamp((ridge ^ 2.6) * (0.55 + sharp), 0, 1.25)
+		local ridge = 1 - math.abs(math.noise((x + o.c * 9) * 0.012, (z + o.d * 9) * 0.012))
+		local sharp = math.max(0, math.noise((x + o.e * 7) * 0.028, (z + o.f * 7) * 0.028))
+		return math.clamp((ridge ^ 3) * (0.35 + sharp * 0.45), 0, 0.85)
 	end
 
 	local function lavaLakeField(x, z)
@@ -263,20 +265,21 @@ local function makeHeightFunction(worldData)
 			return flat
 		end
 
-		local continent = math.noise((x + o.f) * 0.0045, (z + o.g) * 0.0045)
-		local base = 18 + continent * 2.2
-		local hills = math.noise((x + o.a) * 0.02, (z + o.b) * 0.02) * (4.4 + math.max(0, continent) * 2.2)
-		local detail = math.noise((x + o.c) * 0.065, (z + o.d) * 0.065) * 1.35
+		local continent = math.noise((x + o.f) * 0.0036, (z + o.g) * 0.0036)
+		local coastline = math.clamp((continent + 0.08) / 0.34, 0, 1)
+		local base = waterLevel - 5 + coastline * 9
+		local hills = math.noise((x + o.a) * 0.016, (z + o.b) * 0.016) * (2.4 + coastline * 4.4)
+		local detail = math.noise((x + o.c) * 0.055, (z + o.d) * 0.055) * 0.85
 		local mountainMask = mountainField(x, z)
-		local mountainRise = (mountainMask ^ 2) * 24
+		local mountainRise = (mountainMask ^ 2.1) * 20 * coastline
 		local cliffMask = cliffField(x, z)
-		local cliffs = cliffMask * (1.5 + mountainMask * 4.5)
+		local cliffs = cliffMask * (0.8 + mountainMask * 3.2) * coastline
 		local river = riverField(x, z)
-		local riverBand = math.clamp((0.085 - river) / 0.085, 0, 1)
-		local riverCut = (riverBand ^ 1.4) * (8 + mountainMask * 6)
+		local riverBand = math.clamp((0.065 - river) / 0.065, 0, 1)
+		local riverCut = (riverBand ^ 1.5) * (5 + mountainMask * 5)
 		local lake = lakeField(x, z)
-		local lakeMask = math.clamp((lake - 0.6) / 0.4, 0, 1)
-		local lakeCut = (lakeMask ^ 1.8) * 10
+		local lakeMask = math.clamp((lake - 0.42) / 0.42, 0, 1)
+		local lakeCut = (lakeMask ^ 1.8) * 6
 		local lavaLakeNoise = lavaLakeField(x, z)
 		local lavaLakeMask = math.clamp((lavaLakeNoise - 0.6) / 0.4, 0, 1)
 		local lavaEligible = mountainMask > 0.34 and riverBand < 0.2 and lakeMask < 0.2
@@ -287,7 +290,9 @@ local function makeHeightFunction(worldData)
 		end
 
 		local h = base + hills + detail + mountainRise + cliffs - riverCut - lakeCut - lavaLakeCut
-		h = math.floor(math.clamp(h, 4, WORLD_HEIGHT))
+		local shallowSea = math.clamp((0.02 - continent) / 0.24, 0, 1)
+		h -= shallowSea * (4 + math.abs(math.noise((x + o.h) * 0.017, (z + o.a) * 0.017)) * 3)
+		h = math.floor(math.clamp(h, 5, WORLD_HEIGHT))
 
 		local riverSurfaceY = math.floor(math.clamp(waterLevel + mountainMask * 4, waterLevel, waterLevel + 4))
 		local lavaSurfaceY = nil
@@ -299,9 +304,9 @@ local function makeHeightFunction(worldData)
 		local info = {
 			Height = h,
 			IsRiver = riverBand > 0.42,
-			IsLake = lakeMask > 0.38 and h <= waterLevel + 3,
-			IsMountain = mountainMask > 0.38 or h >= waterLevel + 18,
-			IsCliff = cliffMask > 0.68,
+			IsLake = lakeMask > 0.45 and h <= waterLevel + 3,
+			IsMountain = mountainMask > 0.46 or h >= waterLevel + 18,
+			IsCliff = cliffMask > 0.76,
 			IsLavaLake = lavaSurfaceY ~= nil,
 			RiverSurfaceY = riverSurfaceY,
 			LavaSurfaceY = lavaSurfaceY,
@@ -584,17 +589,17 @@ local function maybePlaceTree(folder, heightFn, x, z, surfaceY)
 		return
 	end
 
-	if heightFn.IsMountain(x, z) or getSteepness(heightFn, x, z) >= 4 then
+	if heightFn.IsMountain(x, z) or getSteepness(heightFn, x, z) >= 5 then
 		return
 	end
 
-	if x % 3 ~= 1 or z % 3 ~= 1 then
+	if x % 4 ~= 1 or z % 4 ~= 1 then
 		return
 	end
 
-	local n = math.noise((x + heightFn.Seed * 0.001) * 0.08, (z + heightFn.Seed * 0.001) * 0.08)
+	local n = math.noise((x + heightFn.Seed * 0.001) * 0.06, (z + heightFn.Seed * 0.001) * 0.06)
 	local detail = math.noise((x + 9000) * 0.29, (z - 7000) * 0.29)
-	if n < 0.7 or detail < 0.18 then
+	if n < 0.42 or detail < 0.05 then
 		return
 	end
 
@@ -643,6 +648,48 @@ local function maybePlaceLavaSource(folder, heightFn, x, z, surfaceY)
 	setLiquidState(part, "blcLava", true, false, 0, surfaceY + 1)
 end
 
+local function findSafeSpawnGrid(heightFn, width, depth)
+	local centerX = math.max(1, math.floor(width * 0.5))
+	local centerZ = math.max(1, math.floor(depth * 0.5))
+	local bestX = centerX
+	local bestZ = centerZ
+	local bestScore = math.huge
+
+	local function consider(dx, dz)
+		local x = math.clamp(centerX + dx, 1, width - 2)
+		local z = math.clamp(centerZ + dz, 1, depth - 2)
+		local h = heightFn.HeightAt(x, z)
+		local steepness = getSteepness(heightFn, x, z)
+		if h >= heightFn.WaterLevel + 2 and steepness <= 4 and chooseTopMaterial(heightFn, x, z, h) == "Grass" then
+			local score = math.abs(dx) + math.abs(dz) + steepness * 5
+			if score < bestScore then
+				bestX = x
+				bestZ = z
+				bestScore = score
+			end
+		end
+	end
+
+	for radius = 0, math.max(width, depth), 4 do
+		if radius == 0 then
+			consider(0, 0)
+		else
+			for offset = -radius, radius, 4 do
+				consider(offset, -radius)
+				consider(offset, radius)
+				consider(-radius, offset)
+				consider(radius, offset)
+			end
+		end
+
+		if bestScore < math.huge then
+			break
+		end
+	end
+
+	return bestX, bestZ
+end
+
 local function buildWorld(worldData)
 	clearWorld()
 
@@ -668,8 +715,7 @@ local function buildWorld(worldData)
 	MCRE.BlockSize = BLOCK_SIZE
 	MCRE.WorldWidth = width
 	MCRE.WorldDepth = depth
-	MCRE.SpawnGridX = math.max(1, math.floor(width * 0.5))
-	MCRE.SpawnGridZ = math.max(1, math.floor(depth * 0.5))
+	MCRE.SpawnGridX, MCRE.SpawnGridZ = findSafeSpawnGrid(heightFn, width, depth)
 
 	MCRE.RegisterBlock = function(part)
 		if part and part:IsA("BasePart") then
