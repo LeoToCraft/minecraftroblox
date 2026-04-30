@@ -1,3 +1,4 @@
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 
@@ -7,6 +8,13 @@ local MCRE = _G.MCRE
 local rmtGame = ReplicatedStorage:WaitForChild("rmtGame")
 local BreakBlock = rmtGame:WaitForChild("BreakBlock")
 local PlaceBlock = rmtGame:WaitForChild("PlaceBlock")
+local InventorySync = rmtGame:FindFirstChild("InventorySync")
+
+if not InventorySync then
+	InventorySync = Instance.new("RemoteEvent")
+	InventorySync.Name = "InventorySync"
+	InventorySync.Parent = rmtGame
+end
 
 local blocksFolder = ServerStorage:WaitForChild("blcStorage")
 
@@ -47,6 +55,51 @@ local LIQUID = {
 	blcWater = true,
 	blcLava = true,
 }
+
+local playerInventories = {}
+
+local function getInventory(player)
+	local inventory = playerInventories[player]
+	if not inventory then
+		inventory = {}
+		playerInventories[player] = inventory
+	end
+	return inventory
+end
+
+local function syncInventory(player)
+	if player and player.Parent then
+		InventorySync:FireClient(player, getInventory(player))
+	end
+end
+
+local function addInventoryItem(player, blockName, amount)
+	if LIQUID[blockName] then
+		return
+	end
+
+	local inventory = getInventory(player)
+	inventory[blockName] = math.max(0, (inventory[blockName] or 0) + amount)
+	syncInventory(player)
+end
+
+local function consumeInventoryItem(player, blockName)
+	if LIQUID[blockName] then
+		return false
+	end
+
+	local inventory = getInventory(player)
+	local count = inventory[blockName] or 0
+	if count <= 0 then
+		return false
+	end
+
+	inventory[blockName] = count - 1
+	if inventory[blockName] <= 0 then
+		inventory[blockName] = nil
+	end
+	return true
+end
 
 local function snapToGrid(position)
 	return Vector3.new(
@@ -260,6 +313,7 @@ BreakBlock.OnServerEvent:Connect(function(player, target)
 
 	local runtime = MCRE.Runtime
 	local x, y, z = toGrid(target.Position)
+	local blockName = target.Name
 
 	if runtime and runtime.WorldData and runtime.WorldData.Changes then
 		runtime.WorldData.Changes[gridKey(x, y, z)] = false
@@ -267,6 +321,7 @@ BreakBlock.OnServerEvent:Connect(function(player, target)
 
 	local snapped = snapToGrid(target.Position)
 	target:Destroy()
+	addInventoryItem(player, blockName, 1)
 	if MCRE.UnregisterBlockAtGrid then
 		MCRE.UnregisterBlockAtGrid(x, y, z)
 	end
@@ -290,38 +345,50 @@ PlaceBlock.OnServerEvent:Connect(function(player, position, blockName)
 		return
 	end
 
+	if not consumeInventoryItem(player, tostring(blockName)) then
+		syncInventory(player)
+		return
+	end
+
 	local character = player.Character
 	if not character then
+		addInventoryItem(player, tostring(blockName), 1)
 		return
 	end
 
 	local hrp = character:FindFirstChild("HumanoidRootPart")
 	if not hrp then
+		addInventoryItem(player, tostring(blockName), 1)
 		return
 	end
 
 	local snapped = snapToGrid(position)
 
 	if (hrp.Position - snapped).Magnitude > MAX_DISTANCE then
+		addInventoryItem(player, tostring(blockName), 1)
 		return
 	end
 
 	local x, y, z = toGrid(snapped)
 
 	if getPartAt(snapped) then
+		addInventoryItem(player, tostring(blockName), 1)
 		return
 	end
 
 	if MCRE.GetLogicalBlockName and MCRE.GetLogicalBlockName(x, y, z) then
+		addInventoryItem(player, tostring(blockName), 1)
 		return
 	end
 
 	if not LIQUID[blockName] and characterIntersects(character, snapped) then
+		addInventoryItem(player, tostring(blockName), 1)
 		return
 	end
 
 	local folder = worldFolder()
 	if not folder then
+		addInventoryItem(player, tostring(blockName), 1)
 		return
 	end
 
@@ -354,6 +421,7 @@ PlaceBlock.OnServerEvent:Connect(function(player, position, blockName)
 	end
 
 	if not part then
+		addInventoryItem(player, tostring(blockName), 1)
 		return
 	end
 
@@ -372,4 +440,10 @@ PlaceBlock.OnServerEvent:Connect(function(player, position, blockName)
 	if FALLING[blockName] then
 		enqueueFallingBlock(runtime and runtime.WorldData, part)
 	end
+
+	syncInventory(player)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	playerInventories[player] = nil
 end)

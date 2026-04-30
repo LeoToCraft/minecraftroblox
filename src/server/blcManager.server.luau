@@ -150,6 +150,10 @@ local function createLiquid(folder, index, liquidName, x, y, z, flowDistance, so
 	part.Name = liquidName
 	part.Anchored = true
 	part.CanCollide = false
+	part.CastShadow = false
+	part.Material = liquidName == "blcWater" and Enum.Material.SmoothPlastic or Enum.Material.Neon
+	part.Color = liquidName == "blcWater" and Color3.fromRGB(32, 95, 230) or Color3.fromRGB(230, 74, 22)
+	part.Transparency = liquidName == "blcWater" and 0.82 or 0.22
 	part.Position = gridToPosition(x, y, z)
 	part:SetAttribute("LiquidType", liquidName)
 	part:SetAttribute("IsLiquidSource", isSource == true)
@@ -166,6 +170,10 @@ local function createLiquid(folder, index, liquidName, x, y, z, flowDistance, so
 end
 
 local function cleanupOrphans(folder, liquidName)
+	if liquidName == "blcLava" then
+		return
+	end
+
 	local index = buildIndex(folder)
 
 	local all = {}

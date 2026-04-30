@@ -23,7 +23,7 @@ local HostCurrentWorld = rmtGame:WaitForChild("HostCurrentWorld")
 local JoinHostedServer = rmtGame:WaitForChild("JoinHostedServer")
 local CommandFeedback = rmtGame:WaitForChild("CommandFeedback", 5)
 
-local versionText = "0.0.12a"
+local versionText = "0.0.13a"
 
 local backgroundAsset = guiAssets:WaitForChild("gui"):WaitForChild("gui_menu")
 
@@ -491,13 +491,25 @@ end
 local function refreshWorldActionButtons()
 	local hasSelection = selectedWorldSlot ~= nil
 	local data = hasSelection and cachedWorlds[selectedWorldSlot] or nil
+	local createOpen = createPanel.Visible == true
 
-	setWorldButtonState(worldsJoin, data ~= nil)
-	setWorldButtonState(worldsCreate, hasSelection)
-	setWorldButtonState(worldsRecreate, data ~= nil)
-	setWorldButtonState(worldsRename, data ~= nil)
-	setWorldButtonState(worldsDelete, data ~= nil)
-	renameBox.Visible = data ~= nil
+	worldsJoin.Visible = not createOpen
+	worldsCreate.Visible = not createOpen
+	worldsRecreate.Visible = not createOpen
+	worldsRename.Visible = not createOpen
+	worldsDelete.Visible = not createOpen
+	worldsBack.Visible = not createOpen
+	renameBox.Visible = not createOpen and data ~= nil
+
+	setWorldButtonState(worldsJoin, not createOpen and data ~= nil)
+	setWorldButtonState(worldsCreate, not createOpen and hasSelection)
+	setWorldButtonState(worldsRecreate, not createOpen and data ~= nil)
+	setWorldButtonState(worldsRename, not createOpen and data ~= nil)
+	setWorldButtonState(worldsDelete, not createOpen and data ~= nil)
+
+	for _, buttonObject in pairs(worldButtons) do
+		buttonObject.Visible = not createOpen
+	end
 end
 
 local function openCreateWorld(overwrite)
@@ -512,12 +524,14 @@ local function openCreateWorld(overwrite)
 	createSeedBox.Text = ""
 	createConfirm.Text = createOverwrite and "Re-create" or "Create"
 	createPanel.Visible = true
+	refreshWorldActionButtons()
 end
 
 closeCreateWorld = function()
 	createPanel.Visible = false
 	createTargetSlot = nil
 	createOverwrite = false
+	refreshWorldActionButtons()
 end
 
 local function clearDynamic(container, fixed)

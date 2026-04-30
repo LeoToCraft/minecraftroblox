@@ -12,7 +12,7 @@ Players.CharacterAutoLoads = false
 _G.MCRE = _G.MCRE or {}
 local MCRE = _G.MCRE
 
-MCRE.Version = "0.0.12a"
+MCRE.Version = "0.0.13a"
 MCRE.Runtime = MCRE.Runtime or {
 	IsWorldServer = false,
 	WorldLoaded = false,
@@ -487,7 +487,13 @@ local function buildRuntimeWorld()
 		return false, "No world data"
 	end
 
-	MCRE.BuildWorld(runtime.WorldData)
+	local ok, err = pcall(function()
+		MCRE.BuildWorld(runtime.WorldData)
+	end)
+	if not ok then
+		return false, tostring(err)
+	end
+
 	runtime.WorldLoaded = true
 	return true
 end
@@ -1058,10 +1064,14 @@ Players.PlayerAdded:Connect(function(player)
 		player:SetAttribute("WorldLoadProgress", 10)
 
 		if not MCRE.Runtime.WorldLoaded then
-			local ok = buildRuntimeWorld()
+			local ok, err = buildRuntimeWorld()
 			if ok then
 				player:SetAttribute("WorldLoadProgress", 90)
 				MCRE.Runtime.WorldLoaded = true
+			else
+				warn("[MCRE] World generation failed: " .. tostring(err))
+				setLobbyState(player)
+				return
 			end
 		end
 

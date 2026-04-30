@@ -33,10 +33,10 @@ local BLOCK_SIZE = blcGrass.Size.X
 local WORLD_HEIGHT = 96
 local DEFAULT_WATER_LEVEL = 18
 local CHUNK_SIZE = 16
-local INITIAL_LOAD_RADIUS = 16
-local STREAM_LOAD_RADIUS = 32
+local INITIAL_LOAD_RADIUS = 0
+local STREAM_LOAD_RADIUS = 24
 local STREAM_CHUNKS_PER_STEP = 1
-local TERRAIN_COLUMN_DEPTH = 24
+local TERRAIN_COLUMN_DEPTH = 16
 local WATER_COLUMN_DEPTH = 10
 local LAVA_COLUMN_DEPTH = 5
 
@@ -819,7 +819,7 @@ local function buildWorld(worldData)
 	local function loadChunksAroundGrid(gridX, gridZ, radiusColumns, maxChunks)
 		local centerChunkX = math.floor(gridX / CHUNK_SIZE)
 		local centerChunkZ = math.floor(gridZ / CHUNK_SIZE)
-		local radiusChunks = math.max(1, math.ceil(radiusColumns / CHUNK_SIZE))
+		local radiusChunks = math.max(0, math.ceil(radiusColumns / CHUNK_SIZE))
 		local built = 0
 
 		for r = 0, radiusChunks do

@@ -13,6 +13,7 @@ local rmtGame = ReplicatedStorage:WaitForChild("rmtGame")
 local BreakBlock = rmtGame:WaitForChild("BreakBlock")
 local PlaceBlock = rmtGame:WaitForChild("PlaceBlock")
 local SetCrouchState = rmtGame:WaitForChild("SetCrouchState")
+local InventorySync = rmtGame:WaitForChild("InventorySync", 5)
 
 local guiAssets = ReplicatedStorage:WaitForChild("guiAssets")
 local itemsFolder = guiAssets:WaitForChild("items")
@@ -36,8 +37,10 @@ local inventory = {
 }
 
 local BLOCK_NAME_LOOKUP = {}
+local INVENTORY_BY_BLOCK = {}
 for _, item in ipairs(inventory) do
 	BLOCK_NAME_LOOKUP[item.blockName] = true
+	INVENTORY_BY_BLOCK[item.blockName] = item
 end
 
 local BLOCK_ICON_COLORS = {
@@ -205,6 +208,7 @@ inventoryLayout.Parent = inventoryGrid
 local hotbarSlots = {}
 local inventoryButtons = {}
 local hotbarAssignments = {}
+local ownedCounts = {}
 
 local function controlsEnabled()
 	return player:GetAttribute("WorldLoaded") == true
@@ -506,15 +510,34 @@ end
 
 local function updateInventoryVisuals()
 	local selectedItem = hotbarAssignments[selected]
+	local anyVisible = false
+
 	for i, buttonObject in ipairs(inventoryButtons) do
 		local item = inventory[i]
+		local count = ownedCounts[item.blockName] or 0
+		local visible = count > 0
+		buttonObject.Visible = visible
+		anyVisible = anyVisible or visible
 		buttonObject.BackgroundColor3 = selectedItem and item.blockName == selectedItem.blockName
 			and Color3.fromRGB(238, 238, 238)
 			or Color3.fromRGB(138, 138, 138)
+
+		local label = buttonObject:FindFirstChild("Label")
+		if label then
+			label.Text = string.format("%s x%d", item.title, count)
+		end
 	end
+
+	inventoryTitle.Text = anyVisible and "Inventory" or "Inventory is empty"
 end
 
 local function refreshUI()
+	for slotIndex, item in pairs(hotbarAssignments) do
+		if item and (ownedCounts[item.blockName] or 0) <= 0 then
+			hotbarAssignments[slotIndex] = nil
+		end
+	end
+
 	for i = 1, HOTBAR_SLOT_COUNT do
 		updateSlotVisual(i)
 	end
@@ -596,6 +619,7 @@ local function buildInventory()
 		image.Parent = btn
 
 		local label = Instance.new("TextLabel")
+		label.Name = "Label"
 		label.Size = UDim2.new(1, -8, 0, 22)
 		label.Position = UDim2.new(0, 4, 1, -24)
 		label.BackgroundTransparency = 1
@@ -607,6 +631,10 @@ local function buildInventory()
 		label.Parent = btn
 
 		btn.MouseButton1Click:Connect(function()
+			if (ownedCounts[item.blockName] or 0) <= 0 then
+				return
+			end
+
 			hotbarAssignments[selected] = item
 			refreshUI()
 		end)
@@ -619,6 +647,20 @@ inventoryLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function
 	local size = inventoryLayout.AbsoluteContentSize
 	inventoryGrid.CanvasSize = UDim2.new(0, 0, 0, size.Y + 12)
 end)
+
+if InventorySync then
+	InventorySync.OnClientEvent:Connect(function(counts)
+		ownedCounts = {}
+		if type(counts) == "table" then
+			for blockName, count in pairs(counts) do
+				if INVENTORY_BY_BLOCK[blockName] and type(count) == "number" and count > 0 then
+					ownedCounts[blockName] = math.floor(count)
+				end
+			end
+		end
+		refreshUI()
+	end)
+end
 
 buildHotbar()
 buildInventory()
