@@ -21,8 +21,9 @@ local RequestServerList = rmtGame:WaitForChild("RequestServerList")
 local UpdateHostSettings = rmtGame:WaitForChild("UpdateHostSettings")
 local HostCurrentWorld = rmtGame:WaitForChild("HostCurrentWorld")
 local JoinHostedServer = rmtGame:WaitForChild("JoinHostedServer")
+local CommandFeedback = rmtGame:WaitForChild("CommandFeedback", 5)
 
-local versionText = "0.0.8_01a"
+local versionText = "0.0.12a"
 
 local backgroundAsset = guiAssets:WaitForChild("gui"):WaitForChild("gui_menu")
 
@@ -55,6 +56,21 @@ root.Size = UDim2.new(1, 0, 1, 0)
 root.BackgroundTransparency = 1
 root.Parent = screen
 
+if CommandFeedback then
+	CommandFeedback.OnClientEvent:Connect(function(message)
+		task.defer(function()
+			pcall(function()
+				StarterGui:SetCore("ChatMakeSystemMessage", {
+					Text = tostring(message),
+					Color = Color3.fromRGB(235, 235, 235),
+					Font = Enum.Font.Arcade,
+					TextSize = 18,
+				})
+			end)
+		end)
+	end)
+end
+
 local bg = Instance.new("ImageLabel")
 bg.Size = UDim2.new(1, 0, 1, 0)
 bg.BackgroundTransparency = 1
@@ -71,7 +87,7 @@ shade.Parent = root
 
 local function corner(instance, radius)
 	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, radius or 6)
+	c.CornerRadius = UDim.new(0, radius or 0)
 	c.Parent = instance
 	return c
 end
@@ -93,8 +109,9 @@ local function text(parent, value, size, position, textSize, alignX)
 	t.Position = position
 	t.Text = value
 	t.TextColor3 = Color3.new(1, 1, 1)
-	t.TextStrokeTransparency = 0.72
-	t.Font = Enum.Font.GothamBold
+	t.TextStrokeColor3 = Color3.new(0, 0, 0)
+	t.TextStrokeTransparency = 0.35
+	t.Font = Enum.Font.Arcade
 	t.TextSize = textSize
 	t.TextXAlignment = alignX or Enum.TextXAlignment.Center
 	t.TextWrapped = true
@@ -106,35 +123,49 @@ local function button(parent, value, size, position)
 	local b = Instance.new("TextButton")
 	b.Size = size
 	b.Position = position
-	b.BackgroundColor3 = Color3.fromRGB(72, 93, 78)
+	b.BackgroundColor3 = Color3.fromRGB(118, 118, 118)
 	b.BorderSizePixel = 0
 	b.Text = value
 	b.TextColor3 = Color3.new(1, 1, 1)
-	b.TextStrokeTransparency = 0.78
-	b.Font = Enum.Font.GothamBold
-	b.TextSize = 22
+	b.TextStrokeColor3 = Color3.new(0, 0, 0)
+	b.TextStrokeTransparency = 0.2
+	b.Font = Enum.Font.Arcade
+	b.TextSize = 20
 	b.TextWrapped = true
+	b:SetAttribute("BaseColor", b.BackgroundColor3)
 	b.Parent = parent
-	corner(b, 6)
-	stroke(b, Color3.fromRGB(218, 218, 205), 0.52, 1)
+	corner(b, 0)
+	stroke(b, Color3.fromRGB(15, 15, 15), 0, 2)
+	b.MouseEnter:Connect(function()
+		if b.Active ~= false then
+			b.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
+		end
+	end)
+	b.MouseLeave:Connect(function()
+		b.BackgroundColor3 = b:GetAttribute("BaseColor") or Color3.fromRGB(118, 118, 118)
+	end)
 	return b
+end
+
+local function setButtonBaseColor(buttonObject, color)
+	buttonObject.BackgroundColor3 = color
+	buttonObject:SetAttribute("BaseColor", color)
 end
 
 local function panel(parent, size, position)
 	local p = Instance.new("Frame")
 	p.Size = size
 	p.Position = position
-	p.BackgroundColor3 = Color3.fromRGB(18, 24, 25)
-	p.BackgroundTransparency = 0.12
+	p.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+	p.BackgroundTransparency = 1
 	p.BorderSizePixel = 0
 	p.Visible = false
 	p.Parent = parent
-	corner(p, 8)
-	stroke(p, Color3.fromRGB(228, 228, 210), 0.68, 1)
+	corner(p, 0)
 	return p
 end
 
-local title = text(root, "Minecraft: Roblox Edition", UDim2.new(0, 760, 0, 80), UDim2.new(0.5, -380, 0, 40), 42)
+local title = text(root, "Minecraft: Roblox Edition", UDim2.new(0, 760, 0, 80), UDim2.new(0.5, -380, 0, 40), 40)
 local version = text(root, versionText, UDim2.new(0, 240, 0, 24), UDim2.new(1, -250, 1, -35), 18, Enum.TextXAlignment.Right)
 
 local homeFrame = Instance.new("Frame")
@@ -184,25 +215,66 @@ local pauseHost = button(pausePanel, "Host server", UDim2.new(0, 320, 0, 36), UD
 local pauseQuit = button(pausePanel, "Save world and quit", UDim2.new(0, 320, 0, 36), UDim2.new(0.5, -160, 0, 214))
 
 text(worldsPanel, "Worlds", UDim2.new(1, 0, 0, 36), UDim2.new(0, 0, 0, 20), 30)
-local worldsBack = button(worldsPanel, "Back", UDim2.new(0, 120, 0, 38), UDim2.new(1, -160, 0, 438))
-local worldsCreate = button(worldsPanel, "Create new world", UDim2.new(0, 190, 0, 38), UDim2.new(0, 40, 0, 438))
-local worldsDelete = button(worldsPanel, "Delete world", UDim2.new(0, 160, 0, 38), UDim2.new(0, 250, 0, 438))
-local worldsRename = button(worldsPanel, "Rename world", UDim2.new(0, 160, 0, 38), UDim2.new(0, 430, 0, 438))
-local worldSizeButton = button(worldsPanel, "Size: Large", UDim2.new(0, 190, 0, 36), UDim2.new(0, 40, 0, 394))
+local worldsJoin = button(worldsPanel, "Join to world", UDim2.new(0, 150, 0, 38), UDim2.new(0, 40, 0, 438))
+local worldsCreate = button(worldsPanel, "Create new world", UDim2.new(0, 160, 0, 38), UDim2.new(0, 205, 0, 438))
+local worldsRecreate = button(worldsPanel, "Re-create world", UDim2.new(0, 160, 0, 38), UDim2.new(0, 380, 0, 438))
+local worldsRename = button(worldsPanel, "Rename world", UDim2.new(0, 130, 0, 38), UDim2.new(0, 555, 0, 438))
+local worldsDelete = button(worldsPanel, "Delete world", UDim2.new(0, 130, 0, 38), UDim2.new(0, 700, 0, 438))
+local worldsBack = button(worldsPanel, "Back", UDim2.new(0, 120, 0, 38), UDim2.new(1, -160, 0, 394))
 
 local renameBox = Instance.new("TextBox")
 renameBox.Size = UDim2.new(0, 220, 0, 36)
 renameBox.Position = UDim2.new(1, -260, 0, 394)
-renameBox.BackgroundColor3 = Color3.fromRGB(226, 224, 206)
-renameBox.TextColor3 = Color3.fromRGB(22, 24, 23)
+renameBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+renameBox.TextColor3 = Color3.new(1, 1, 1)
 renameBox.BorderSizePixel = 0
-renameBox.Font = Enum.Font.Gotham
+renameBox.Font = Enum.Font.Arcade
 renameBox.TextSize = 20
 renameBox.ClearTextOnFocus = false
 renameBox.PlaceholderText = "New name"
+renameBox.PlaceholderColor3 = Color3.fromRGB(170, 170, 170)
 renameBox.Parent = worldsPanel
-corner(renameBox, 6)
-stroke(renameBox, Color3.fromRGB(35, 42, 38), 0.68, 1)
+corner(renameBox, 0)
+stroke(renameBox, Color3.fromRGB(0, 0, 0), 0, 2)
+
+local createPanel = panel(worldsPanel, UDim2.new(0, 780, 0, 300), UDim2.new(0, 40, 0, 74))
+createPanel.Visible = false
+text(createPanel, "Create world", UDim2.new(1, 0, 0, 34), UDim2.new(0, 0, 0, 12), 26)
+text(createPanel, "Name", UDim2.new(0, 160, 0, 28), UDim2.new(0, 50, 0, 66), 18, Enum.TextXAlignment.Left)
+text(createPanel, "Seed", UDim2.new(0, 160, 0, 28), UDim2.new(0, 50, 0, 118), 18, Enum.TextXAlignment.Left)
+
+local createNameBox = Instance.new("TextBox")
+createNameBox.Size = UDim2.new(0, 420, 0, 34)
+createNameBox.Position = UDim2.new(0, 200, 0, 62)
+createNameBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+createNameBox.TextColor3 = Color3.new(1, 1, 1)
+createNameBox.BorderSizePixel = 0
+createNameBox.Font = Enum.Font.Arcade
+createNameBox.TextSize = 18
+createNameBox.ClearTextOnFocus = false
+createNameBox.PlaceholderText = "New World"
+createNameBox.PlaceholderColor3 = Color3.fromRGB(170, 170, 170)
+createNameBox.Parent = createPanel
+stroke(createNameBox, Color3.fromRGB(0, 0, 0), 0, 2)
+
+local createSeedBox = Instance.new("TextBox")
+createSeedBox.Size = UDim2.new(0, 420, 0, 34)
+createSeedBox.Position = UDim2.new(0, 200, 0, 114)
+createSeedBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+createSeedBox.TextColor3 = Color3.new(1, 1, 1)
+createSeedBox.BorderSizePixel = 0
+createSeedBox.Font = Enum.Font.Arcade
+createSeedBox.TextSize = 18
+createSeedBox.ClearTextOnFocus = false
+createSeedBox.PlaceholderText = "Random"
+createSeedBox.PlaceholderColor3 = Color3.fromRGB(170, 170, 170)
+createSeedBox.Parent = createPanel
+stroke(createSeedBox, Color3.fromRGB(0, 0, 0), 0, 2)
+
+local worldSizeButton = button(createPanel, "Size: Large", UDim2.new(0, 180, 0, 36), UDim2.new(0, 200, 0, 166))
+local worldTypeButton = button(createPanel, "Type: Normal", UDim2.new(0, 180, 0, 36), UDim2.new(0, 400, 0, 166))
+local createConfirm = button(createPanel, "Create", UDim2.new(0, 170, 0, 38), UDim2.new(0, 200, 0, 232))
+local createCancel = button(createPanel, "Cancel", UDim2.new(0, 170, 0, 38), UDim2.new(0, 410, 0, 232))
 
 text(multiPanel, "Multiplayer", UDim2.new(1, 0, 0, 36), UDim2.new(0, 0, 0, 20), 30)
 local multiBack = button(multiPanel, "Back", UDim2.new(0, 120, 0, 38), UDim2.new(1, -160, 0, 438))
@@ -223,15 +295,15 @@ barBg.Position = UDim2.new(0.5, -260, 0, 70)
 barBg.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 barBg.BorderSizePixel = 0
 barBg.Parent = loadingPanel
-corner(barBg, 6)
-stroke(barBg, Color3.fromRGB(230, 230, 210), 0.62, 1)
+corner(barBg, 0)
+stroke(barBg, Color3.fromRGB(0, 0, 0), 0, 2)
 
 local barFill = Instance.new("Frame")
 barFill.Size = UDim2.new(0, 0, 1, 0)
-barFill.BackgroundColor3 = Color3.fromRGB(92, 176, 96)
+barFill.BackgroundColor3 = Color3.fromRGB(128, 255, 128)
 barFill.BorderSizePixel = 0
 barFill.Parent = barBg
-corner(barFill, 6)
+corner(barFill, 0)
 
 local percentText = text(loadingPanel, "0%", UDim2.new(0, 520, 0, 34), UDim2.new(0.5, -260, 0, 112), 30)
 text(loadingPanel, "Loading World", UDim2.new(0, 520, 0, 30), UDim2.new(0.5, -260, 0, 152), 24)
@@ -243,6 +315,9 @@ local serverButtons = {}
 local cachedWorlds = {}
 local cachedServers = {}
 local selectedWorldSize = "Large"
+local selectedWorldType = "Normal"
+local createTargetSlot = nil
+local createOverwrite = false
 local currentGraphics = 2
 local currentShowDebug = true
 local fpsFrames = 0
@@ -260,7 +335,12 @@ local function freeMouse()
 	UserInputService.MouseIconEnabled = true
 end
 
+local closeCreateWorld
+
 local function showHome()
+	if closeCreateWorld then
+		closeCreateWorld()
+	end
 	root.Visible = true
 	homeFrame.Visible = true
 	worldsPanel.Visible = false
@@ -283,6 +363,9 @@ local function showWorlds()
 end
 
 local function showMulti()
+	if closeCreateWorld then
+		closeCreateWorld()
+	end
 	root.Visible = true
 	homeFrame.Visible = false
 	worldsPanel.Visible = false
@@ -294,6 +377,9 @@ local function showMulti()
 end
 
 local function showSettings(fromPause)
+	if closeCreateWorld then
+		closeCreateWorld()
+	end
 	root.Visible = true
 	homeFrame.Visible = false
 	worldsPanel.Visible = false
@@ -319,6 +405,17 @@ end
 local function hideAllMenu()
 	root.Visible = false
 	pauseRoot.Visible = false
+end
+
+local function syncWorldScreen()
+	if player:GetAttribute("WorldLoading") == true then
+		showLoading()
+		setPercent(player:GetAttribute("WorldLoadProgress") or 0)
+	elseif player:GetAttribute("WorldLoaded") == true and player:GetAttribute("InMenu") ~= true then
+		hideAllMenu()
+	elseif player:GetAttribute("InMenu") == true then
+		showHome()
+	end
 end
 
 local function showPause()
@@ -349,9 +446,14 @@ local function refreshSettingsText()
 end
 
 local worldSizeOrder = { "Small", "Medium", "Large", "Huge" }
+local worldTypeOrder = { "Normal", "Superflat" }
 
 local function refreshWorldSizeText()
 	worldSizeButton.Text = "Size: " .. selectedWorldSize
+end
+
+local function refreshWorldTypeText()
+	worldTypeButton.Text = "Type: " .. selectedWorldType
 end
 
 local function cycleWorldSize()
@@ -365,6 +467,57 @@ local function cycleWorldSize()
 
 	selectedWorldSize = "Large"
 	refreshWorldSizeText()
+end
+
+local function cycleWorldType()
+	for index, typeName in ipairs(worldTypeOrder) do
+		if typeName == selectedWorldType then
+			selectedWorldType = worldTypeOrder[(index % #worldTypeOrder) + 1]
+			refreshWorldTypeText()
+			return
+		end
+	end
+
+	selectedWorldType = "Normal"
+	refreshWorldTypeText()
+end
+
+local function setWorldButtonState(buttonObject, enabled)
+	buttonObject.Active = enabled
+	buttonObject.AutoButtonColor = enabled
+	setButtonBaseColor(buttonObject, enabled and Color3.fromRGB(118, 118, 118) or Color3.fromRGB(54, 54, 54))
+end
+
+local function refreshWorldActionButtons()
+	local hasSelection = selectedWorldSlot ~= nil
+	local data = hasSelection and cachedWorlds[selectedWorldSlot] or nil
+
+	setWorldButtonState(worldsJoin, data ~= nil)
+	setWorldButtonState(worldsCreate, hasSelection)
+	setWorldButtonState(worldsRecreate, data ~= nil)
+	setWorldButtonState(worldsRename, data ~= nil)
+	setWorldButtonState(worldsDelete, data ~= nil)
+	renameBox.Visible = data ~= nil
+end
+
+local function openCreateWorld(overwrite)
+	if not selectedWorldSlot then
+		return
+	end
+
+	createTargetSlot = selectedWorldSlot
+	createOverwrite = overwrite == true
+	local data = cachedWorlds[selectedWorldSlot]
+	createNameBox.Text = data and tostring(data.Name) or "New World"
+	createSeedBox.Text = ""
+	createConfirm.Text = createOverwrite and "Re-create" or "Create"
+	createPanel.Visible = true
+end
+
+closeCreateWorld = function()
+	createPanel.Visible = false
+	createTargetSlot = nil
+	createOverwrite = false
 end
 
 local function clearDynamic(container, fixed)
@@ -402,14 +555,10 @@ local function rebuildWorldList()
 
 		local btn = button(worldsPanel, titleText, UDim2.new(0, 780, 0, 64), UDim2.new(0, 40, 0, y))
 		btn.TextSize = 22
-		btn.BackgroundColor3 = selectedWorldSlot == slot and Color3.fromRGB(96, 126, 92) or Color3.fromRGB(56, 70, 62)
+		setButtonBaseColor(btn, selectedWorldSlot == slot and Color3.fromRGB(165, 165, 165) or Color3.fromRGB(100, 100, 100))
 
 		btn.MouseButton1Click:Connect(function()
-			selectedWorldSlot = slot
-			renameBox.Text = data and tostring(data.Name) or ""
-			rebuildWorldList()
-
-			if data then
+			if selectedWorldSlot == slot and data then
 				showLoading()
 				setPercent(10)
 				local result = LoadWorld:InvokeServer(slot)
@@ -418,11 +567,19 @@ local function rebuildWorldList()
 				else
 					showWorlds()
 				end
+				return
 			end
+
+			selectedWorldSlot = slot
+			renameBox.Text = data and tostring(data.Name) or ""
+			closeCreateWorld()
+			rebuildWorldList()
 		end)
 
 		worldButtons[slot] = btn
 	end
+
+	refreshWorldActionButtons()
 end
 
 local function rebuildServerList()
@@ -438,7 +595,7 @@ local function rebuildServerList()
 
 		local btn = button(multiPanel, labelText, UDim2.new(0, 780, 0, 56), UDim2.new(0, 40, 0, y))
 		btn.TextSize = 22
-		btn.BackgroundColor3 = selectedServer == index and Color3.fromRGB(96, 126, 92) or Color3.fromRGB(56, 70, 62)
+		setButtonBaseColor(btn, selectedServer == index and Color3.fromRGB(165, 165, 165) or Color3.fromRGB(100, 100, 100))
 
 		btn.MouseButton1Click:Connect(function()
 			selectedServer = index
@@ -498,14 +655,61 @@ settingsBack.MouseButton1Click:Connect(function()
 	end
 end)
 
+worldsJoin.MouseButton1Click:Connect(function()
+	if not selectedWorldSlot or not cachedWorlds[selectedWorldSlot] then
+		return
+	end
+
+	showLoading()
+	setPercent(10)
+	local result = LoadWorld:InvokeServer(selectedWorldSlot)
+	if result and result.Success then
+		setPercent(100)
+	else
+		showWorlds()
+	end
+end)
+
 worldsCreate.MouseButton1Click:Connect(function()
-	local targetSlot = selectedWorldSlot or 1
-	CreateWorld:InvokeServer(targetSlot, "New World", selectedWorldSize, "Normal", "")
-	refreshWorldData()
+	if not selectedWorldSlot then
+		return
+	end
+	openCreateWorld(false)
+end)
+
+worldsRecreate.MouseButton1Click:Connect(function()
+	if not selectedWorldSlot or not cachedWorlds[selectedWorldSlot] then
+		return
+	end
+	openCreateWorld(true)
 end)
 
 worldSizeButton.MouseButton1Click:Connect(function()
 	cycleWorldSize()
+end)
+
+worldTypeButton.MouseButton1Click:Connect(function()
+	cycleWorldType()
+end)
+
+createConfirm.MouseButton1Click:Connect(function()
+	if not createTargetSlot then
+		return
+	end
+
+	local worldName = createNameBox.Text
+	if worldName == "" then
+		worldName = "New World"
+	end
+
+	CreateWorld:InvokeServer(createTargetSlot, worldName, selectedWorldSize, selectedWorldType, createSeedBox.Text)
+	selectedWorldSlot = createTargetSlot
+	closeCreateWorld()
+	refreshWorldData()
+end)
+
+createCancel.MouseButton1Click:Connect(function()
+	closeCreateWorld()
 end)
 
 worldsDelete.MouseButton1Click:Connect(function()
@@ -603,15 +807,15 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 end)
 
 player:GetAttributeChangedSignal("WorldLoaded"):Connect(function()
-	if player:GetAttribute("WorldLoaded") == true and player:GetAttribute("InMenu") ~= true then
-		hideAllMenu()
-	end
+	syncWorldScreen()
 end)
 
 player:GetAttributeChangedSignal("WorldLoading"):Connect(function()
-	if player:GetAttribute("WorldLoading") == true then
-		showLoading()
-	end
+	syncWorldScreen()
+end)
+
+player:GetAttributeChangedSignal("InMenu"):Connect(function()
+	syncWorldScreen()
 end)
 
 player:GetAttributeChangedSignal("WorldLoadProgress"):Connect(function()
@@ -650,8 +854,4 @@ end)
 
 refreshWorldData()
 
-if player:GetAttribute("WorldLoaded") == true then
-	hideAllMenu()
-else
-	showHome()
-end
+syncWorldScreen()

@@ -5,13 +5,14 @@ local DataStoreService = game:GetService("DataStoreService")
 local MemoryStoreService = game:GetService("MemoryStoreService")
 local TeleportService = game:GetService("TeleportService")
 local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
 Players.CharacterAutoLoads = false
 
 _G.MCRE = _G.MCRE or {}
 local MCRE = _G.MCRE
 
-MCRE.Version = "0.0.9a"
+MCRE.Version = "0.0.12a"
 MCRE.Runtime = MCRE.Runtime or {
 	IsWorldServer = false,
 	WorldLoaded = false,
@@ -36,9 +37,26 @@ local RequestServerList = rmtGame:WaitForChild("RequestServerList")
 local UpdateHostSettings = rmtGame:WaitForChild("UpdateHostSettings")
 local HostCurrentWorld = rmtGame:WaitForChild("HostCurrentWorld")
 local JoinHostedServer = rmtGame:WaitForChild("JoinHostedServer")
+local CommandFeedback = rmtGame:FindFirstChild("CommandFeedback")
+
+if not CommandFeedback then
+	CommandFeedback = Instance.new("RemoteEvent")
+	CommandFeedback.Name = "CommandFeedback"
+	CommandFeedback.Parent = rmtGame
+end
 
 local blocksFolder = ServerStorage:WaitForChild("blcStorage")
-local grassBlock = blocksFolder:WaitForChild("GrassBlock")
+
+local function getBlockTemplate(blockName, alternateName)
+	local template = blocksFolder:FindFirstChild(blockName) or blocksFolder:FindFirstChild(alternateName)
+	if template then
+		return template
+	end
+
+	error(string.format("Missing block template %s in ServerStorage.blcStorage.", blockName))
+end
+
+local grassBlock = getBlockTemplate("blcGrass", "GrassBlock")
 
 local WORLDS_STORE = DataStoreService:GetDataStore("MCRE_W_Alpha_0_0_7")
 local SETTINGS_STORE = DataStoreService:GetDataStore("MCRE_S_Alpha_0_0_7")
@@ -124,6 +142,12 @@ local function normalizeWorldType(worldType)
 		return "Superflat"
 	end
 	return "Normal"
+end
+
+local function makeRandomSeed(player, slotId)
+	local stamp = math.floor(os.clock() * 1000000)
+	local rng = Random.new(os.time() + player.UserId + (slotId or 0) * 101 + stamp)
+	return string.format("%d-%d-%d", player.UserId, os.time(), rng:NextInteger(1, 2147483646))
 end
 
 local function getWorldList(userId)
@@ -468,6 +492,222 @@ local function buildRuntimeWorld()
 	return true
 end
 
+local respawnScheduled = {}
+
+local function getSafeSpawnCFrame()
+	local worldData = MCRE.Runtime.WorldData or {}
+	local width = tonumber(worldData.Width) or MCRE.WorldWidth or 64
+	local depth = tonumber(worldData.Depth) or MCRE.WorldDepth or 64
+	local gridX = MCRE.SpawnGridX or math.max(1, math.floor(width * 0.5))
+	local gridZ = MCRE.SpawnGridZ or math.max(1, math.floor(depth * 0.5))
+	local surfaceY = 20
+
+	if MCRE.HeightAt then
+		local ok, result = pcall(function()
+			return MCRE.HeightAt(gridX, gridZ)
+		end)
+		if ok and type(result) == "number" then
+			surfaceY = result
+		end
+	end
+
+	return CFrame.new(gridX * BLOCK_SIZE, (surfaceY + 4) * BLOCK_SIZE, gridZ * BLOCK_SIZE)
+end
+
+local function moveCharacterToSafeSpawn(character)
+	local root = character:FindFirstChild("HumanoidRootPart") or character:WaitForChild("HumanoidRootPart", 6)
+	if root then
+		character:PivotTo(getSafeSpawnCFrame())
+	end
+end
+
+local function spawnWorldCharacter(player)
+	if not player.Parent or not MCRE.Runtime.WorldLoaded then
+		return
+	end
+
+	player:LoadCharacter()
+	local character = player.Character or player.CharacterAdded:Wait()
+	moveCharacterToSafeSpawn(character)
+end
+
+local function scheduleWorldRespawn(player, delaySeconds)
+	if respawnScheduled[player] then
+		return
+	end
+
+	respawnScheduled[player] = true
+	task.delay(delaySeconds or 0, function()
+		respawnScheduled[player] = nil
+		if player.Parent and MCRE.Runtime.IsWorldServer and MCRE.Runtime.WorldLoaded then
+			spawnWorldCharacter(player)
+		end
+	end)
+end
+
+local function watchWorldCharacter(player, character)
+	local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 8)
+	if humanoid then
+		humanoid.Died:Connect(function()
+			scheduleWorldRespawn(player, 1.5)
+		end)
+	end
+
+	task.spawn(function()
+		while player.Parent and character.Parent and MCRE.Runtime.IsWorldServer and MCRE.Runtime.WorldLoaded do
+			local root = character:FindFirstChild("HumanoidRootPart")
+			if root and root.Position.Y < -80 then
+				scheduleWorldRespawn(player, 0)
+				return
+			end
+			task.wait(0.35)
+		end
+	end)
+end
+
+local function splitWords(text)
+	local words = {}
+	for word in string.gmatch(tostring(text or ""), "%S+") do
+		table.insert(words, word)
+	end
+	return words
+end
+
+local function countMapEntries(map)
+	local total = 0
+	if type(map) ~= "table" then
+		return total
+	end
+	for _ in pairs(map) do
+		total += 1
+	end
+	return total
+end
+
+local function sendCommandFeedback(player, message)
+	local line = "[MCRE] " .. tostring(message)
+	print(line)
+	if player and player.Parent then
+		CommandFeedback:FireClient(player, line)
+	end
+	return line
+end
+
+local function canRunCommand(player)
+	if RunService:IsStudio() then
+		return true
+	end
+	return player ~= nil and (MCRE.Runtime.OwnerUserId == nil or MCRE.Runtime.OwnerUserId == player.UserId)
+end
+
+local function getCharacterRoot(player)
+	local character = player and player.Character
+	return character and character:FindFirstChild("HumanoidRootPart") or nil
+end
+
+local function runMcreCommand(player, commandText)
+	if not canRunCommand(player) then
+		return sendCommandFeedback(player, "Command denied. Only the world owner can use MCRE commands in published servers.")
+	end
+
+	local args = splitWords(commandText)
+	local command = string.lower(args[1] or "help")
+
+	if command == "help" then
+		return sendCommandFeedback(player, "Commands: help, status, version, seed, pos, chunks, water, spawn, tp <x> <y> <z>.")
+	end
+
+	if command == "version" then
+		return sendCommandFeedback(player, "Version " .. MCRE.Version)
+	end
+
+	if command == "seed" then
+		local worldData = MCRE.Runtime.WorldData or {}
+		return sendCommandFeedback(player, "Seed: " .. tostring(worldData.Seed or "none"))
+	end
+
+	if command == "status" then
+		local worldData = MCRE.Runtime.WorldData or {}
+		local folder = Workspace:FindFirstChild("WorldBlocks")
+		local blocks = folder and #folder:GetChildren() or 0
+		local chunks = countMapEntries(MCRE.LoadedChunks)
+		return sendCommandFeedback(player, string.format(
+			"WorldLoaded=%s, Size=%sx%s, Type=%s, Blocks=%s, Chunks=%s",
+			tostring(MCRE.Runtime.WorldLoaded),
+			tostring(worldData.Width or MCRE.WorldWidth or "?"),
+			tostring(worldData.Depth or MCRE.WorldDepth or "?"),
+			tostring(worldData.WorldType or "Normal"),
+			tostring(blocks),
+			tostring(chunks)
+		))
+	end
+
+	if command == "chunks" then
+		return sendCommandFeedback(player, string.format(
+			"Loaded chunks=%s, loaded columns=%s, indexed blocks=%s",
+			tostring(countMapEntries(MCRE.LoadedChunks)),
+			tostring(countMapEntries(MCRE.LoadedColumns)),
+			tostring(countMapEntries(MCRE.BlockIndex))
+		))
+	end
+
+	if command == "water" then
+		return sendCommandFeedback(player, "WaterLevel=" .. tostring(MCRE.WaterLevel or "unknown"))
+	end
+
+	if command == "pos" then
+		local root = getCharacterRoot(player)
+		if not root then
+			return sendCommandFeedback(player, "No character position.")
+		end
+		local gridX = math.floor(root.Position.X / BLOCK_SIZE + 0.5)
+		local gridY = math.floor(root.Position.Y / BLOCK_SIZE + 0.5)
+		local gridZ = math.floor(root.Position.Z / BLOCK_SIZE + 0.5)
+		return sendCommandFeedback(player, string.format("Position studs=(%.1f, %.1f, %.1f), grid=(%d, %d, %d)", root.Position.X, root.Position.Y, root.Position.Z, gridX, gridY, gridZ))
+	end
+
+	if command == "spawn" then
+		if player then
+			spawnWorldCharacter(player)
+			return sendCommandFeedback(player, "Respawned at the safe world spawn.")
+		end
+		return sendCommandFeedback(player, "Run spawn with a player in Studio: _G.MCRE.RunCommand(player, \"spawn\")")
+	end
+
+	if command == "tp" then
+		if not player then
+			return sendCommandFeedback(player, "Run tp with a player in Studio: _G.MCRE.RunCommand(player, \"tp 32 24 32\")")
+		end
+		local x = tonumber(args[2])
+		local y = tonumber(args[3])
+		local z = tonumber(args[4])
+		if not x or not y or not z then
+			return sendCommandFeedback(player, "Usage: tp <gridX> <gridY> <gridZ>")
+		end
+		local character = player.Character
+		if character then
+			character:PivotTo(CFrame.new(x * BLOCK_SIZE, y * BLOCK_SIZE, z * BLOCK_SIZE))
+			return sendCommandFeedback(player, string.format("Teleported to grid=(%d, %d, %d)", math.floor(x), math.floor(y), math.floor(z)))
+		end
+		return sendCommandFeedback(player, "No character to teleport.")
+	end
+
+	return sendCommandFeedback(player, "Unknown command. Use /mcre help.")
+end
+
+MCRE.RunCommand = function(playerOrCommand, maybeCommand)
+	if typeof(playerOrCommand) == "Instance" and playerOrCommand:IsA("Player") then
+		return runMcreCommand(playerOrCommand, maybeCommand or "help")
+	end
+
+	if type(playerOrCommand) == "string" and maybeCommand ~= nil then
+		local matchedPlayer = Players:FindFirstChild(playerOrCommand)
+		return runMcreCommand(matchedPlayer, maybeCommand)
+	end
+
+	return runMcreCommand(Players:GetPlayers()[1], playerOrCommand or "help")
+end
+
 local function startStudioWorld(player, slotId, worldData)
 	MCRE.Runtime.IsWorldServer = true
 	MCRE.Runtime.WorldLoaded = false
@@ -487,7 +727,7 @@ local function startStudioWorld(player, slotId, worldData)
 	end
 
 	player:SetAttribute("WorldLoadProgress", 90)
-	player:LoadCharacter()
+	spawnWorldCharacter(player)
 	setLoadedState(player, slotId)
 	return { Success = true }
 end
@@ -518,6 +758,9 @@ CreateWorld.OnServerInvoke = function(player, slotId, worldName, worldSize, worl
 	end
 
 	seedText = tostring(seedText or "")
+	if seedText == "" then
+		seedText = makeRandomSeed(player, slotId)
+	end
 
 	local list = getWorldList(player.UserId)
 	list[slotId] = {
@@ -794,6 +1037,17 @@ Players.PlayerAdded:Connect(function(player)
 	player:SetAttribute("InventoryOpen", false)
 	player:SetAttribute("GameVersion", MCRE.Version)
 
+	player.CharacterAdded:Connect(function(character)
+		watchWorldCharacter(player, character)
+	end)
+
+	player.Chatted:Connect(function(message)
+		local text = tostring(message or "")
+		if string.lower(string.sub(text, 1, 5)) == "/mcre" then
+			runMcreCommand(player, string.sub(text, 6))
+		end
+	end)
+
 	local booted = false
 	if not MCRE.Runtime.IsWorldServer then
 		booted = bootWorldServerFromJoin(player)
@@ -815,7 +1069,7 @@ Players.PlayerAdded:Connect(function(player)
 			beginHostedState(player.UserId)
 		end
 
-		player:LoadCharacter()
+		spawnWorldCharacter(player)
 		setLoadedState(player, MCRE.Runtime.SlotId)
 	else
 		setLobbyState(player)
@@ -823,6 +1077,8 @@ Players.PlayerAdded:Connect(function(player)
 end)
 
 Players.PlayerRemoving:Connect(function(player)
+	respawnScheduled[player] = nil
+
 	if MCRE.Runtime.IsWorldServer and MCRE.Runtime.OwnerUserId == player.UserId then
 		saveRuntimeWorld()
 		removeHostedState(player.UserId)

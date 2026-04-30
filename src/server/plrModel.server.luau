@@ -8,19 +8,31 @@ local rmtGame = ReplicatedStorage:WaitForChild("rmtGame")
 local BreakBlock = rmtGame:WaitForChild("BreakBlock")
 local PlaceBlock = rmtGame:WaitForChild("PlaceBlock")
 
-local blocksFolder = ServerStorage:WaitForChild("blcStorage") 
+local blocksFolder = ServerStorage:WaitForChild("blcStorage")
+
+local function getBlockTemplate(blockName, alternateName)
+	local template = blocksFolder:FindFirstChild(blockName) or blocksFolder:FindFirstChild(alternateName)
+	if template then
+		return template
+	end
+
+	error(string.format("Missing block template %s in ServerStorage.blcStorage.", blockName))
+end
 
 local BLOCKS = {
-	blcGrass = blocksFolder:WaitForChild("GrassBlock"),
-	blcDirt = blocksFolder:WaitForChild("DirtBlock"),
-	blcStone = blocksFolder:WaitForChild("StoneBlock"),
-	blcCobblestone = blocksFolder:WaitForChild("CobblestoneBlock"),
-	blcLog = blocksFolder:WaitForChild("LogBlock"),
-	blcLeaves = blocksFolder:WaitForChild("LeavesBlock"),
-	blcSand = blocksFolder:WaitForChild("SandBlock"),
-	blcGravel = blocksFolder:WaitForChild("GravelBlock"),
-	blcWater = blocksFolder:WaitForChild("WaterBlock"),
-	blcLava = blocksFolder:WaitForChild("LavaBlock"),
+	blcGrass = getBlockTemplate("blcGrass", "GrassBlock"),
+	blcDirt = getBlockTemplate("blcDirt", "DirtBlock"),
+	blcStone = getBlockTemplate("blcStone", "StoneBlock"),
+	blcCobblestone = getBlockTemplate("blcCobblestone", "CobblestoneBlock"),
+	blcLog = getBlockTemplate("blcLog", "LogBlock"),
+	blcLeaves = getBlockTemplate("blcLeaves", "LeavesBlock"),
+	blcSand = getBlockTemplate("blcSand", "SandBlock"),
+	blcGravel = getBlockTemplate("blcGravel", "GravelBlock"),
+	blcBricks = getBlockTemplate("blcBricks", "BricksBlock"),
+	blcPlanks = getBlockTemplate("blcPlanks", "PlanksBlock"),
+	blcGlass = getBlockTemplate("blcGlass", "GlassBlock"),
+	blcWater = getBlockTemplate("blcWater", "WaterBlock"),
+	blcLava = getBlockTemplate("blcLava", "LavaBlock"),
 }
 
 local BLOCK_SIZE = BLOCKS.blcGrass.Size.X
@@ -123,6 +135,7 @@ local function characterIntersects(character, position)
 end
 
 local fallingQueue = {}
+local fallingQueueHead = 1
 local fallingQueued = {}
 local fallingWorkerRunning = false
 local MAX_FALLS_PER_STEP = 12
@@ -185,11 +198,13 @@ local function runFallingWorker()
 
 	fallingWorkerRunning = true
 	task.spawn(function()
-		while #fallingQueue > 0 do
+		while fallingQueueHead <= #fallingQueue do
 			local processed = 0
 
-			while processed < MAX_FALLS_PER_STEP and #fallingQueue > 0 do
-				local item = table.remove(fallingQueue, 1)
+			while processed < MAX_FALLS_PER_STEP and fallingQueueHead <= #fallingQueue do
+				local item = fallingQueue[fallingQueueHead]
+				fallingQueue[fallingQueueHead] = nil
+				fallingQueueHead += 1
 				local part = item.Part
 				fallingQueued[part] = nil
 				settleFallingBlock(item.RuntimeData, part)
@@ -199,6 +214,8 @@ local function runFallingWorker()
 			task.wait()
 		end
 
+		fallingQueue = {}
+		fallingQueueHead = 1
 		fallingWorkerRunning = false
 	end)
 end
@@ -341,6 +358,11 @@ PlaceBlock.OnServerEvent:Connect(function(player, position, blockName)
 	end
 
 	part.CanCollide = not LIQUID[blockName]
+	if blockName == "blcGlass" then
+		part.Material = Enum.Material.Glass
+		part.Transparency = 0.45
+		part.CastShadow = false
+	end
 
 	local runtime = MCRE.Runtime
 	if runtime and runtime.WorldData and runtime.WorldData.Changes then

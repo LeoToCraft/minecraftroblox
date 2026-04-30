@@ -4,11 +4,21 @@ _G.MCRE = _G.MCRE or {}
 local MCRE = _G.MCRE
 
 local blocks = ServerStorage:WaitForChild("blcStorage")
-local blcGrass = blocks:WaitForChild("GrassBlock")
-local blcCobblestone = blocks:WaitForChild("CobblestoneBlock") 
-local blcWater = blocks:WaitForChild("WaterBlock")
-local blcLava = blocks:WaitForChild("LavaBlock")
- 
+
+local function getBlockTemplate(blockName, alternateName)
+	local template = blocks:FindFirstChild(blockName) or blocks:FindFirstChild(alternateName)
+	if template then
+		return template
+	end
+
+	error(string.format("Missing block template %s in ServerStorage.blcStorage.", blockName))
+end
+
+local blcGrass = getBlockTemplate("blcGrass", "GrassBlock")
+local blcCobblestone = getBlockTemplate("blcCobblestone", "CobblestoneBlock")
+local blcWater = getBlockTemplate("blcWater", "WaterBlock")
+local blcLava = getBlockTemplate("blcLava", "LavaBlock")
+
 local BLOCK_SIZE = blcGrass.Size.X
 
 local LIQUIDS = {

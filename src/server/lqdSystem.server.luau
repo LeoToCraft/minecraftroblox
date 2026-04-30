@@ -1,3 +1,4 @@
+local Players = game:GetService("Players")
 local ServerStorage = game:GetService("ServerStorage")
 
 _G.MCRE = _G.MCRE or {}
@@ -5,20 +6,39 @@ local MCRE = _G.MCRE
 
 local blocks = ServerStorage:WaitForChild("blcStorage")
 
-local blcGrass = blocks:WaitForChild("GrassBlock")
-local blcDirt = blocks:WaitForChild("DirtBlock")
-local blcStone = blocks:WaitForChild("StoneBlock")
-local blcCobblestone = blocks:WaitForChild("CobblestoneBlock")
-local blcLog = blocks:WaitForChild("LogBlock")
-local blcLeaves = blocks:WaitForChild("LeavesBlock")
-local blcSand = blocks:WaitForChild("SandBlock")
-local blcGravel = blocks:WaitForChild("GravelBlock") 
-local blcWater = blocks:WaitForChild("WaterBlock")
-local blcLava = blocks:WaitForChild("LavaBlock")
+local function getBlockTemplate(blockName, alternateName)
+	local template = blocks:FindFirstChild(blockName) or blocks:FindFirstChild(alternateName)
+	if template then
+		return template
+	end
+
+	error(string.format("Missing block template %s in ServerStorage.blcStorage.", blockName))
+end
+
+local blcGrass = getBlockTemplate("blcGrass", "GrassBlock")
+local blcDirt = getBlockTemplate("blcDirt", "DirtBlock")
+local blcStone = getBlockTemplate("blcStone", "StoneBlock")
+local blcCobblestone = getBlockTemplate("blcCobblestone", "CobblestoneBlock")
+local blcLog = getBlockTemplate("blcLog", "LogBlock")
+local blcLeaves = getBlockTemplate("blcLeaves", "LeavesBlock")
+local blcSand = getBlockTemplate("blcSand", "SandBlock")
+local blcGravel = getBlockTemplate("blcGravel", "GravelBlock")
+local blcBricks = getBlockTemplate("blcBricks", "BricksBlock")
+local blcPlanks = getBlockTemplate("blcPlanks", "PlanksBlock")
+local blcGlass = getBlockTemplate("blcGlass", "GlassBlock")
+local blcWater = getBlockTemplate("blcWater", "WaterBlock")
+local blcLava = getBlockTemplate("blcLava", "LavaBlock")
 
 local BLOCK_SIZE = blcGrass.Size.X
 local WORLD_HEIGHT = 96
 local DEFAULT_WATER_LEVEL = 18
+local CHUNK_SIZE = 16
+local INITIAL_LOAD_RADIUS = 16
+local STREAM_LOAD_RADIUS = 32
+local STREAM_CHUNKS_PER_STEP = 1
+local TERRAIN_COLUMN_DEPTH = 24
+local WATER_COLUMN_DEPTH = 10
+local LAVA_COLUMN_DEPTH = 5
 
 local BLOCK_TEMPLATES = {
 	blcGrass = blcGrass,
@@ -29,6 +49,9 @@ local BLOCK_TEMPLATES = {
 	blcLeaves = blcLeaves,
 	blcSand = blcSand,
 	blcGravel = blcGravel,
+	blcBricks = blcBricks,
+	blcPlanks = blcPlanks,
+	blcGlass = blcGlass,
 	blcWater = blcWater,
 	blcLava = blcLava,
 }
@@ -119,6 +142,10 @@ local function clearWorld()
 	MCRE.UnregisterBlockAtGrid = nil
 	MCRE.RevealBlockAt = nil
 	MCRE.RevealNeighborsAround = nil
+	MCRE.LoadChunkAroundGrid = nil
+	MCRE.LoadedColumns = nil
+	MCRE.LoadedChunks = nil
+	MCRE.StreamToken = nil
 end
 
 local function createWorldFolder()
@@ -144,6 +171,21 @@ end
 
 local function setLiquidState(part, liquidName, isSource, staticLiquid, flowDistance, sourceY)
 	part.CanCollide = false
+	part.CastShadow = false
+	part.Material = Enum.Material.SmoothPlastic
+	part.Color = liquidName == "blcWater" and Color3.fromRGB(32, 95, 230) or Color3.fromRGB(230, 74, 22)
+	part.Transparency = liquidName == "blcWater" and 0.82 or 0.42
+
+	for _, child in ipairs(part:GetDescendants()) do
+		if child:IsA("Decal") or child:IsA("Texture") then
+			child.Transparency = liquidName == "blcWater" and 0.78 or 0.28
+		elseif child:IsA("SurfaceAppearance") then
+			pcall(function()
+				child.AlphaMode = Enum.AlphaMode.Transparency
+			end)
+		end
+	end
+
 	part:SetAttribute("LiquidType", liquidName)
 	part:SetAttribute("IsLiquidSource", isSource == true)
 	part:SetAttribute("IsStaticLiquid", staticLiquid == true)
@@ -221,13 +263,14 @@ local function makeHeightFunction(worldData)
 			return flat
 		end
 
-		local base = 18
-		local hills = math.noise((x + o.a) * 0.026, (z + o.b) * 0.026) * 7
-		local detail = math.noise((x + o.c) * 0.085, (z + o.d) * 0.085) * 3.2
+		local continent = math.noise((x + o.f) * 0.0045, (z + o.g) * 0.0045)
+		local base = 18 + continent * 2.2
+		local hills = math.noise((x + o.a) * 0.02, (z + o.b) * 0.02) * (4.4 + math.max(0, continent) * 2.2)
+		local detail = math.noise((x + o.c) * 0.065, (z + o.d) * 0.065) * 1.35
 		local mountainMask = mountainField(x, z)
-		local mountainRise = (mountainMask ^ 2) * 30
+		local mountainRise = (mountainMask ^ 2) * 24
 		local cliffMask = cliffField(x, z)
-		local cliffs = cliffMask * (4 + mountainMask * 12)
+		local cliffs = cliffMask * (1.5 + mountainMask * 4.5)
 		local river = riverField(x, z)
 		local riverBand = math.clamp((0.085 - river) / 0.085, 0, 1)
 		local riverCut = (riverBand ^ 1.4) * (8 + mountainMask * 6)
@@ -235,8 +278,8 @@ local function makeHeightFunction(worldData)
 		local lakeMask = math.clamp((lake - 0.6) / 0.4, 0, 1)
 		local lakeCut = (lakeMask ^ 1.8) * 10
 		local lavaLakeNoise = lavaLakeField(x, z)
-		local lavaLakeMask = math.clamp((lavaLakeNoise - 0.66) / 0.34, 0, 1)
-		local lavaEligible = mountainMask > 0.42 and riverBand < 0.22
+		local lavaLakeMask = math.clamp((lavaLakeNoise - 0.6) / 0.4, 0, 1)
+		local lavaEligible = mountainMask > 0.34 and riverBand < 0.2 and lakeMask < 0.2
 		local lavaLakeCut = 0
 
 		if lavaEligible and lavaLakeMask > 0 then
@@ -249,7 +292,7 @@ local function makeHeightFunction(worldData)
 		local riverSurfaceY = math.floor(math.clamp(waterLevel + mountainMask * 4, waterLevel, waterLevel + 4))
 		local lavaSurfaceY = nil
 
-		if lavaEligible and lavaLakeMask > 0.3 and h >= waterLevel + 8 then
+		if lavaEligible and lavaLakeMask > 0.34 and h >= waterLevel + 7 then
 			lavaSurfaceY = math.floor(math.clamp(h + 1 + lavaLakeMask * 3, waterLevel + 8, WORLD_HEIGHT - 2))
 		end
 
@@ -258,7 +301,7 @@ local function makeHeightFunction(worldData)
 			IsRiver = riverBand > 0.42,
 			IsLake = lakeMask > 0.38 and h <= waterLevel + 3,
 			IsMountain = mountainMask > 0.38 or h >= waterLevel + 18,
-			IsCliff = cliffMask > 0.45,
+			IsCliff = cliffMask > 0.68,
 			IsLavaLake = lavaSurfaceY ~= nil,
 			RiverSurfaceY = riverSurfaceY,
 			LavaSurfaceY = lavaSurfaceY,
@@ -345,7 +388,7 @@ local function getSteepness(heightFn, x, z)
 end
 
 local function shouldCarveCave(seed, x, y, z, surfaceHeight)
-	if y <= 2 or y >= surfaceHeight - 2 then
+	if y <= 4 or y >= surfaceHeight - 20 then
 		return false
 	end
 
@@ -353,7 +396,7 @@ local function shouldCarveCave(seed, x, y, z, surfaceHeight)
 	local cave = math.noise((x + s * 53) * 0.07, (y + s * 29) * 0.09, (z + s * 71) * 0.07)
 	local tunnel = math.noise((x + s * 113) * 0.14, (y + s * 97) * 0.14, (z + s * 131) * 0.14)
 
-	return cave > 0.57 or (cave > 0.47 and tunnel < -0.15)
+	return cave > 0.78 and tunnel < -0.25
 end
 
 local function chooseTopMaterial(heightFn, x, z, h)
@@ -372,7 +415,7 @@ local function chooseTopMaterial(heightFn, x, z, h)
 		end
 	end
 
-	if shoreDistance <= 1 then
+	if shoreDistance <= 2 then
 		if math.noise((x + 19) * 0.2, (z + 19) * 0.2) > 0 then
 			return "Sand"
 		else
@@ -469,6 +512,31 @@ local function isExposedBlock(heightFn, changes, x, y, z, width, depth)
 	return false
 end
 
+local function getSurfaceShellMinY(heightFn, x, z, surfaceY, width, depth)
+	local minY = math.max(0, surfaceY - TERRAIN_COLUMN_DEPTH)
+	local directions = {
+		{ 1, 0 },
+		{ -1, 0 },
+		{ 0, 1 },
+		{ 0, -1 },
+	}
+
+	for _, d in ipairs(directions) do
+		local nx = x + d[1]
+		local nz = z + d[2]
+		if nx < 0 or nx >= width or nz < 0 or nz >= depth then
+			minY = math.min(minY, math.max(0, surfaceY - 5))
+		else
+			local neighborY = heightFn.HeightAt(nx, nz)
+			if neighborY < surfaceY then
+				minY = math.min(minY, math.max(0, neighborY + 1))
+			end
+		end
+	end
+
+	return minY
+end
+
 local function createNamedBlock(folder, blockName, x, y, z)
 	local template = BLOCK_TEMPLATES[blockName]
 	if not template then
@@ -478,8 +546,33 @@ local function createNamedBlock(folder, blockName, x, y, z)
 	local part = createBlock(template, blockName, x, y, z, folder)
 	if LIQUID_BLOCKS[blockName] then
 		part.CanCollide = false
+	elseif blockName == "blcGlass" then
+		part.Material = Enum.Material.Glass
+		part.Transparency = 0.45
+		part.CastShadow = false
 	end
 	return part
+end
+
+local function createLiquidColumn(folder, template, liquidName, changes, x, z, bottomY, topY, maxDepth, staticLiquid)
+	local placed = 0
+	for y = topY, bottomY, -1 do
+		if placed >= maxDepth then
+			break
+		end
+
+		local key = gridKey(x, y, z)
+		if changes and changes[key] == false then
+			break
+		end
+		if MCRE.BlockIndex and MCRE.BlockIndex[key] then
+			break
+		end
+
+		local part = createBlock(template, liquidName, x, y, z, folder)
+		setLiquidState(part, liquidName, false, staticLiquid == true, placed, topY)
+		placed += 1
+	end
 end
 
 local function maybePlaceTree(folder, heightFn, x, z, surfaceY)
@@ -495,8 +588,13 @@ local function maybePlaceTree(folder, heightFn, x, z, surfaceY)
 		return
 	end
 
-	local n = math.noise((x + heightFn.Seed * 0.001) * 0.11, (z + heightFn.Seed * 0.001) * 0.11)
-	if n < 0.58 then
+	if x % 3 ~= 1 or z % 3 ~= 1 then
+		return
+	end
+
+	local n = math.noise((x + heightFn.Seed * 0.001) * 0.08, (z + heightFn.Seed * 0.001) * 0.08)
+	local detail = math.noise((x + 9000) * 0.29, (z - 7000) * 0.29)
+	if n < 0.7 or detail < 0.18 then
 		return
 	end
 
@@ -554,9 +652,15 @@ local function buildWorld(worldData)
 	local changes = worldData.Changes or {}
 
 	local heightFn = makeHeightFunction(worldData)
+	local loadedColumns = {}
+	local loadedChunks = {}
+	local streamToken = {}
 
 	MCRE.WorldFolder = folder
 	MCRE.BlockIndex = {}
+	MCRE.LoadedColumns = loadedColumns
+	MCRE.LoadedChunks = loadedChunks
+	MCRE.StreamToken = streamToken
 	MCRE.HeightAt = function(x, z)
 		return heightFn.HeightAt(x, z)
 	end
@@ -564,6 +668,8 @@ local function buildWorld(worldData)
 	MCRE.BlockSize = BLOCK_SIZE
 	MCRE.WorldWidth = width
 	MCRE.WorldDepth = depth
+	MCRE.SpawnGridX = math.max(1, math.floor(width * 0.5))
+	MCRE.SpawnGridZ = math.max(1, math.floor(depth * 0.5))
 
 	MCRE.RegisterBlock = function(part)
 		if part and part:IsA("BasePart") then
@@ -641,46 +747,125 @@ local function buildWorld(worldData)
 		end
 	end
 
-	local placed = 0
+	local workCount = 0
+	local lastYield = os.clock()
+	local function stepWork(amount)
+		workCount += amount or 1
+		if workCount % 500 == 0 or os.clock() - lastYield >= 0.025 then
+			lastYield = os.clock()
+			task.wait()
+		end
+	end
 
-	for x = 0, width - 1 do
-		for z = 0, depth - 1 do
-			local surfaceY = heightFn.HeightAt(x, z)
+	local function buildColumn(x, z)
+		if x < 0 or x >= width or z < 0 or z >= depth then
+			return
+		end
 
-			for y = 0, surfaceY do
-				if isExposedBlock(heightFn, changes, x, y, z, width, depth) then
-					createNamedBlock(folder, getWorldBlockName(heightFn, changes, x, y, z, width, depth), x, y, z)
-				end
+		local columnKey = tostring(x) .. "|" .. tostring(z)
+		if loadedColumns[columnKey] then
+			return
+		end
+		loadedColumns[columnKey] = true
 
-				placed += 1
-				if placed % 1800 == 0 then
-					task.wait()
-				end
+		local surfaceY = heightFn.HeightAt(x, z)
+		local minY = getSurfaceShellMinY(heightFn, x, z, surfaceY, width, depth)
+
+		for y = minY, surfaceY do
+			local blockName = getWorldBlockName(heightFn, changes, x, y, z, width, depth)
+			if blockName then
+				createNamedBlock(folder, blockName, x, y, z)
 			end
+			stepWork()
+		end
 
-			local lavaSurfaceY = heightFn.GetLavaSurfaceY(x, z)
-			if lavaSurfaceY and surfaceY < lavaSurfaceY then
-				for y = surfaceY + 1, lavaSurfaceY do
-					local key = gridKey(x, y, z)
-					if changes[key] ~= false then
-						local part = createBlock(blcLava, "blcLava", x, y, z, folder)
-						setLiquidState(part, "blcLava", false, true, 0, lavaSurfaceY)
-					end
-				end
-			else
-				local waterSurfaceY = heightFn.GetWaterSurfaceY(x, z)
-				if waterSurfaceY and surfaceY < waterSurfaceY then
-					for y = surfaceY + 1, waterSurfaceY do
-						local key = gridKey(x, y, z)
-						if changes[key] ~= false then
-							local part = createBlock(blcWater, "blcWater", x, y, z, folder)
-							setLiquidState(part, "blcWater", false, true, 0, waterSurfaceY)
+		local lavaSurfaceY = heightFn.GetLavaSurfaceY(x, z)
+		if lavaSurfaceY and surfaceY < lavaSurfaceY then
+			createLiquidColumn(folder, blcLava, "blcLava", changes, x, z, surfaceY + 1, lavaSurfaceY, LAVA_COLUMN_DEPTH, true)
+		else
+			local waterSurfaceY = heightFn.GetWaterSurfaceY(x, z)
+			if waterSurfaceY and surfaceY < waterSurfaceY then
+				createLiquidColumn(folder, blcWater, "blcWater", changes, x, z, surfaceY + 1, waterSurfaceY, WATER_COLUMN_DEPTH, true)
+			end
+		end
+
+		maybePlaceTree(folder, heightFn, x, z, surfaceY)
+		maybePlaceLavaSource(folder, heightFn, x, z, surfaceY)
+		stepWork()
+	end
+
+	local function chunkKey(chunkX, chunkZ)
+		return tostring(chunkX) .. "|" .. tostring(chunkZ)
+	end
+
+	local function buildChunk(chunkX, chunkZ)
+		local key = chunkKey(chunkX, chunkZ)
+		if loadedChunks[key] then
+			return false
+		end
+		loadedChunks[key] = true
+
+		local startX = chunkX * CHUNK_SIZE
+		local startZ = chunkZ * CHUNK_SIZE
+		for x = startX, startX + CHUNK_SIZE - 1 do
+			for z = startZ, startZ + CHUNK_SIZE - 1 do
+				buildColumn(x, z)
+			end
+		end
+
+		return true
+	end
+
+	local function loadChunksAroundGrid(gridX, gridZ, radiusColumns, maxChunks)
+		local centerChunkX = math.floor(gridX / CHUNK_SIZE)
+		local centerChunkZ = math.floor(gridZ / CHUNK_SIZE)
+		local radiusChunks = math.max(1, math.ceil(radiusColumns / CHUNK_SIZE))
+		local built = 0
+
+		for r = 0, radiusChunks do
+			for dx = -r, r do
+				for dz = -r, r do
+					if math.max(math.abs(dx), math.abs(dz)) == r then
+						local chunkX = centerChunkX + dx
+						local chunkZ = centerChunkZ + dz
+						if buildChunk(chunkX, chunkZ) then
+							built += 1
+							if maxChunks and built >= maxChunks then
+								return built
+							end
 						end
 					end
 				end
 			end
 		end
+
+		return built
 	end
+
+	MCRE.LoadChunkAroundGrid = function(gridX, gridZ, radiusColumns, maxChunks)
+		return loadChunksAroundGrid(gridX, gridZ, radiusColumns or STREAM_LOAD_RADIUS, maxChunks)
+	end
+
+	loadChunksAroundGrid(MCRE.SpawnGridX, MCRE.SpawnGridZ, math.min(INITIAL_LOAD_RADIUS, math.max(width, depth)), nil)
+
+	task.spawn(function()
+		while MCRE.StreamToken == streamToken and folder.Parent do
+			local loadedAny = false
+			for _, player in ipairs(Players:GetPlayers()) do
+				local character = player.Character
+				local hrp = character and character:FindFirstChild("HumanoidRootPart")
+				if hrp and player:GetAttribute("WorldLoaded") == true then
+					local gridX, _, gridZ = positionToGrid(hrp.Position)
+					local built = loadChunksAroundGrid(gridX, gridZ, STREAM_LOAD_RADIUS, STREAM_CHUNKS_PER_STEP)
+					if built > 0 then
+						loadedAny = true
+					end
+				end
+			end
+
+			task.wait(loadedAny and 0.05 or 0.35)
+		end
+	end)
 
 	for key, blockName in pairs(changes) do
 		if type(blockName) == "string" and BLOCK_TEMPLATES[blockName] then
@@ -691,14 +876,6 @@ local function buildWorld(worldData)
 					setLiquidState(part, blockName, true, false, 0, y)
 				end
 			end
-		end
-	end
-
-	for x = 0, width - 1 do
-		for z = 0, depth - 1 do
-			local y = heightFn.HeightAt(x, z)
-			maybePlaceTree(folder, heightFn, x, z, y)
-			maybePlaceLavaSource(folder, heightFn, x, z, y)
 		end
 	end
 end

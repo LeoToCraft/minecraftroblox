@@ -11,7 +11,7 @@ local camera = Workspace.CurrentCamera
 
 local rmtGame = ReplicatedStorage:WaitForChild("rmtGame")
 local BreakBlock = rmtGame:WaitForChild("BreakBlock")
-local PlaceBlock = rmtGame:WaitForChild("PlaceBlock") 
+local PlaceBlock = rmtGame:WaitForChild("PlaceBlock")
 local SetCrouchState = rmtGame:WaitForChild("SetCrouchState")
 
 local guiAssets = ReplicatedStorage:WaitForChild("guiAssets")
@@ -20,19 +20,44 @@ local itemsFolder = guiAssets:WaitForChild("items")
 local BLOCK_SIZE = 3
 
 local inventory = {
-	{ blockName = "blcGrass", iconName = "itm_grass_block", title = "Grass" },
-	{ blockName = "blcDirt", iconName = "itm_dirt", title = "Dirt" },
-	{ blockName = "blcStone", iconName = "itm_stone", title = "Stone" },
-	{ blockName = "blcCobblestone", iconName = "itm_cobblestone", title = "Cobble" },
-	{ blockName = "blcLog", iconName = "itm_log", title = "Log" },
-	{ blockName = "blcLeaves", iconName = "itm_leaves", title = "Leaves" },
-	{ blockName = "blcSand", iconName = "itm_sand", title = "Sand" },
-	{ blockName = "blcGravel", iconName = "itm_gravel", title = "Gravel" },
-	{ blockName = "blcWater", iconName = "itm_water", title = "Water" },
-	{ blockName = "blcLava", iconName = "itm_lava", title = "Lava" },
+	{ blockName = "blcGrass", iconName = "grass_block_item", title = "Grass" },
+	{ blockName = "blcDirt", iconName = "dirt_item", title = "Dirt" },
+	{ blockName = "blcStone", iconName = "stone_item", title = "Stone" },
+	{ blockName = "blcCobblestone", iconName = "cobblestone_item", title = "Cobble" },
+	{ blockName = "blcBricks", iconName = "bricks_item", title = "Bricks" },
+	{ blockName = "blcPlanks", iconName = "planks_item", title = "Planks" },
+	{ blockName = "blcGlass", iconName = "glass_item", title = "Glass" },
+	{ blockName = "blcLog", iconName = "log_item", title = "Log" },
+	{ blockName = "blcLeaves", iconName = "leaves_item", title = "Leaves" },
+	{ blockName = "blcSand", iconName = "sand_item", title = "Sand" },
+	{ blockName = "blcGravel", iconName = "gravel_item", title = "Gravel" },
+	{ blockName = "blcWater", iconName = "water_item", title = "Water" },
+	{ blockName = "blcLava", iconName = "lava_item", title = "Lava" },
+}
+
+local BLOCK_NAME_LOOKUP = {}
+for _, item in ipairs(inventory) do
+	BLOCK_NAME_LOOKUP[item.blockName] = true
+end
+
+local BLOCK_ICON_COLORS = {
+	blcGrass = Color3.fromRGB(82, 170, 72),
+	blcDirt = Color3.fromRGB(105, 76, 52),
+	blcStone = Color3.fromRGB(118, 126, 132),
+	blcCobblestone = Color3.fromRGB(96, 104, 112),
+	blcBricks = Color3.fromRGB(150, 82, 66),
+	blcPlanks = Color3.fromRGB(165, 116, 62),
+	blcGlass = Color3.fromRGB(150, 205, 225),
+	blcLog = Color3.fromRGB(116, 78, 40),
+	blcLeaves = Color3.fromRGB(58, 132, 62),
+	blcSand = Color3.fromRGB(214, 202, 142),
+	blcGravel = Color3.fromRGB(128, 136, 144),
+	blcWater = Color3.fromRGB(58, 116, 210),
+	blcLava = Color3.fromRGB(230, 92, 28),
 }
 
 local selected = 1
+local HOTBAR_SLOT_COUNT = 10
 local isCrouching = false
 local inventoryOpen = false
 local swimUpHeld = false
@@ -41,7 +66,8 @@ local activeLiquid = nil
 local normalWalkSpeed = 16
 local crouchWalkSpeed = 7
 local crouchJumpPower = 0
-local normalJumpPower = 42
+local normalJumpHeight = BLOCK_SIZE * 1.5
+local normalJumpPower = math.sqrt(2 * Workspace.Gravity * normalJumpHeight)
 
 local LIQUID_BLOCKS = {
 	blcWater = true,
@@ -71,11 +97,22 @@ highlight.Color3 = Color3.fromRGB(255, 255, 255)
 highlight.Visible = false
 highlight.Parent = workspace
 
+local hiddenLocalWater = {}
+
 local ui = Instance.new("ScreenGui")
 ui.Name = "ctrSettingsUI"
 ui.ResetOnSpawn = false
 ui.IgnoreGuiInset = true
 ui.Parent = playerGui
+
+local waterOverlay = Instance.new("Frame")
+waterOverlay.Size = UDim2.new(1, 0, 1, 0)
+waterOverlay.BackgroundColor3 = Color3.fromRGB(38, 105, 220)
+waterOverlay.BackgroundTransparency = 0.68
+waterOverlay.BorderSizePixel = 0
+waterOverlay.Visible = false
+waterOverlay.ZIndex = 0
+waterOverlay.Parent = ui
 
 local function corner(instance, radius)
 	local c = Instance.new("UICorner")
@@ -121,42 +158,53 @@ local hotbar = Instance.new("Frame")
 hotbar.Size = UDim2.new(0, 560, 0, 60)
 hotbar.AnchorPoint = Vector2.new(0.5, 1)
 hotbar.Position = UDim2.new(0.5, 0, 1, -18)
-hotbar.BackgroundColor3 = Color3.fromRGB(16, 19, 19)
-hotbar.BackgroundTransparency = 0.28
+hotbar.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
+hotbar.BackgroundTransparency = 0.12
 hotbar.BorderSizePixel = 0
 hotbar.Parent = ui
-corner(hotbar, 8)
-stroke(hotbar, Color3.fromRGB(232, 230, 210), 0.62, 1)
+corner(hotbar, 0)
+stroke(hotbar, Color3.fromRGB(12, 12, 12), 0, 2)
 
 local inventoryFrame = Instance.new("Frame")
 inventoryFrame.Size = UDim2.new(0, 660, 0, 370)
 inventoryFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 inventoryFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-inventoryFrame.BackgroundColor3 = Color3.fromRGB(18, 24, 25)
-inventoryFrame.BackgroundTransparency = 0.08
+inventoryFrame.BackgroundColor3 = Color3.fromRGB(198, 198, 198)
+inventoryFrame.BackgroundTransparency = 0
 inventoryFrame.BorderSizePixel = 0
 inventoryFrame.Visible = false
 inventoryFrame.Parent = ui
-corner(inventoryFrame, 8)
-stroke(inventoryFrame, Color3.fromRGB(232, 230, 210), 0.56, 1)
+corner(inventoryFrame, 0)
+stroke(inventoryFrame, Color3.fromRGB(60, 60, 60), 0, 3)
 
 local inventoryTitle = Instance.new("TextLabel")
 inventoryTitle.Size = UDim2.new(1, 0, 0, 42)
 inventoryTitle.BackgroundTransparency = 1
 inventoryTitle.Text = "Inventory"
-inventoryTitle.TextColor3 = Color3.new(1, 1, 1)
-inventoryTitle.Font = Enum.Font.GothamBold
+inventoryTitle.TextColor3 = Color3.fromRGB(55, 55, 55)
+inventoryTitle.Font = Enum.Font.Arcade
 inventoryTitle.TextSize = 28
 inventoryTitle.Parent = inventoryFrame
 
-local inventoryGrid = Instance.new("Frame")
+local inventoryGrid = Instance.new("ScrollingFrame")
 inventoryGrid.Size = UDim2.new(1, -40, 1, -70)
 inventoryGrid.Position = UDim2.new(0, 20, 0, 50)
 inventoryGrid.BackgroundTransparency = 1
+inventoryGrid.BorderSizePixel = 0
+inventoryGrid.CanvasSize = UDim2.new(0, 0, 0, 0)
+inventoryGrid.ScrollBarThickness = 8
+inventoryGrid.ScrollingDirection = Enum.ScrollingDirection.Y
 inventoryGrid.Parent = inventoryFrame
+
+local inventoryLayout = Instance.new("UIGridLayout")
+inventoryLayout.CellSize = UDim2.new(0, 108, 0, 108)
+inventoryLayout.CellPadding = UDim2.new(0, 12, 0, 12)
+inventoryLayout.SortOrder = Enum.SortOrder.LayoutOrder
+inventoryLayout.Parent = inventoryGrid
 
 local hotbarSlots = {}
 local inventoryButtons = {}
+local hotbarAssignments = {}
 
 local function controlsEnabled()
 	return player:GetAttribute("WorldLoaded") == true
@@ -169,13 +217,7 @@ local function isBlockTarget(part)
 		return false
 	end
 
-	for _, item in ipairs(inventory) do
-		if part.Name == item.blockName then
-			return true
-		end
-	end
-
-	return false
+	return BLOCK_NAME_LOOKUP[part.Name] == true
 end
 
 local function getItemImage(name)
@@ -192,6 +234,11 @@ local function getItemImage(name)
 		return asset.Texture
 	end
 
+	local image = asset:FindFirstChildWhichIsA("ImageLabel", true) or asset:FindFirstChildWhichIsA("ImageButton", true)
+	if image and image.Image ~= "" then
+		return image.Image
+	end
+
 	local decal = asset:FindFirstChildWhichIsA("Decal", true)
 	if decal then
 		return decal.Texture
@@ -203,6 +250,26 @@ local function getItemImage(name)
 	end
 
 	return ""
+end
+
+local function applyItemIcon(image, item)
+	if not item then
+		image.Image = ""
+		image.ImageTransparency = 1
+		image.BackgroundTransparency = 1
+		return
+	end
+
+	local texture = getItemImage(item.iconName)
+	image.Image = texture
+	if texture == "" then
+		image.ImageTransparency = 1
+		image.BackgroundTransparency = 0
+		image.BackgroundColor3 = BLOCK_ICON_COLORS[item.blockName] or Color3.fromRGB(120, 120, 120)
+	else
+		image.ImageTransparency = 0
+		image.BackgroundTransparency = 1
+	end
 end
 
 local function getHumanoidAndRoot()
@@ -221,9 +288,37 @@ local function getCameraTarget(character)
 		return nil
 	end
 
-	local head = character:FindFirstChild("Head")
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	return head or humanoid
+	return humanoid
+end
+
+local function applyJumpSettings(humanoid, jumpPower, jumpHeight)
+	if not humanoid then
+		return
+	end
+
+	pcall(function()
+		humanoid.UseJumpPower = true
+	end)
+	humanoid.JumpPower = jumpPower
+	pcall(function()
+		humanoid.JumpHeight = jumpHeight
+	end)
+end
+
+local function attachCamera(character)
+	camera = Workspace.CurrentCamera
+	local target = getCameraTarget(character)
+	if not target or not camera then
+		return false
+	end
+
+	camera.CameraType = Enum.CameraType.Custom
+	camera.CameraSubject = target
+	player.CameraMode = Enum.CameraMode.LockFirstPerson
+	player.CameraMinZoomDistance = 0.5
+	player.CameraMaxZoomDistance = 0.5
+	return true
 end
 
 local function clearCharacterSounds(character)
@@ -252,10 +347,10 @@ local function applyCrouch()
 
 	if isCrouching then
 		humanoid.WalkSpeed = crouchWalkSpeed
-		humanoid.JumpPower = crouchJumpPower
+		applyJumpSettings(humanoid, crouchJumpPower, 0)
 	else
 		humanoid.WalkSpeed = normalWalkSpeed
-		humanoid.JumpPower = normalJumpPower
+		applyJumpSettings(humanoid, normalJumpPower, normalJumpHeight)
 	end
 end
 
@@ -336,7 +431,9 @@ local function applySwimming(humanoid, hrp, liquidInfo)
 
 	humanoid.WalkSpeed = swimSpeed
 	humanoid.JumpPower = 0
-	humanoid:ChangeState(Enum.HumanoidStateType.Swimming)
+	if humanoid:GetState() ~= Enum.HumanoidStateType.Swimming then
+		humanoid:ChangeState(Enum.HumanoidStateType.Swimming)
+	end
 
 	local targetY = floatSpeed
 	if swimUpHeld then
@@ -347,9 +444,53 @@ local function applySwimming(humanoid, hrp, liquidInfo)
 		targetY = floatSpeed * 0.45
 	end
 
-	local targetVelocity = Vector3.new(moveDirection.X * swimSpeed, targetY, moveDirection.Z * swimSpeed)
-	hrp.AssemblyLinearVelocity = hrp.AssemblyLinearVelocity:Lerp(targetVelocity, 0.18)
+	if moveDirection.Magnitude > 0.05 then
+		humanoid:Move(moveDirection, true)
+	end
+
+	local velocity = hrp.AssemblyLinearVelocity
+	local smoothedY = velocity.Y + (targetY - velocity.Y) * 0.08
+	hrp.AssemblyLinearVelocity = Vector3.new(velocity.X, smoothedY, velocity.Z)
 	return true
+end
+
+local function updateLocalWaterVisibility(character, hrp, liquidInfo)
+	local keepHidden = {}
+
+	if liquidInfo and liquidInfo.Type == "blcWater" and character and hrp then
+		liquidOverlapParams.FilterDescendantsInstances = { character }
+		local nearby = Workspace:GetPartBoundsInBox(
+			CFrame.new(hrp.Position),
+			Vector3.new(BLOCK_SIZE * 5, BLOCK_SIZE * 4, BLOCK_SIZE * 5),
+			liquidOverlapParams
+		)
+
+		for _, part in ipairs(nearby) do
+			if part.Name == "blcWater" then
+				part.LocalTransparencyModifier = 1
+				keepHidden[part] = true
+				hiddenLocalWater[part] = true
+			end
+		end
+	end
+
+	for part in pairs(hiddenLocalWater) do
+		if not keepHidden[part] then
+			if part and part.Parent then
+				part.LocalTransparencyModifier = 0
+			end
+			hiddenLocalWater[part] = nil
+		end
+	end
+
+	waterOverlay.Visible = liquidInfo ~= nil
+	if liquidInfo and liquidInfo.Type == "blcLava" then
+		waterOverlay.BackgroundColor3 = Color3.fromRGB(230, 80, 22)
+		waterOverlay.BackgroundTransparency = 0.58
+	else
+		waterOverlay.BackgroundColor3 = Color3.fromRGB(38, 105, 220)
+		waterOverlay.BackgroundTransparency = 0.68
+	end
 end
 
 local function updateSlotVisual(index)
@@ -358,23 +499,30 @@ local function updateSlotVisual(index)
 		return
 	end
 
-	slot.BackgroundColor3 = index == selected and Color3.fromRGB(215, 205, 158) or Color3.fromRGB(54, 64, 58)
-	slot.Image.Image = getItemImage(inventory[index].iconName)
+	slot.BackgroundColor3 = index == selected and Color3.fromRGB(235, 235, 235) or Color3.fromRGB(95, 95, 95)
+	applyItemIcon(slot.Image, hotbarAssignments[index])
 	slot.Number.Text = tostring(index % 10)
+end
 
-	if inventoryButtons[index] then
-		inventoryButtons[index].BackgroundColor3 = index == selected and Color3.fromRGB(92, 122, 92) or Color3.fromRGB(49, 58, 54)
+local function updateInventoryVisuals()
+	local selectedItem = hotbarAssignments[selected]
+	for i, buttonObject in ipairs(inventoryButtons) do
+		local item = inventory[i]
+		buttonObject.BackgroundColor3 = selectedItem and item.blockName == selectedItem.blockName
+			and Color3.fromRGB(238, 238, 238)
+			or Color3.fromRGB(138, 138, 138)
 	end
 end
 
 local function refreshUI()
-	for i = 1, #inventory do
+	for i = 1, HOTBAR_SLOT_COUNT do
 		updateSlotVisual(i)
 	end
+	updateInventoryVisuals()
 end
 
 local function setSelected(index)
-	if index >= 1 and index <= #inventory then
+	if index >= 1 and index <= HOTBAR_SLOT_COUNT then
 		selected = index
 		refreshUI()
 	end
@@ -395,14 +543,14 @@ local function setInventoryOpen(state)
 end
 
 local function buildHotbar()
-	for i = 1, #inventory do
+	for i = 1, HOTBAR_SLOT_COUNT do
 		local slot = Instance.new("Frame")
 		slot.Size = UDim2.new(0, 50, 0, 50)
 		slot.Position = UDim2.new(0, 5 + (i - 1) * 55, 0, 5)
 		slot.BorderSizePixel = 0
 		slot.Parent = hotbar
-		corner(slot, 6)
-		stroke(slot, Color3.fromRGB(238, 235, 215), 0.6, 1)
+		corner(slot, 0)
+		stroke(slot, Color3.fromRGB(28, 28, 28), 0, 2)
 
 		local image = Instance.new("ImageLabel")
 		image.Name = "Image"
@@ -410,6 +558,7 @@ local function buildHotbar()
 		image.Position = UDim2.new(0, 5, 0, 5)
 		image.BackgroundTransparency = 1
 		image.ScaleType = Enum.ScaleType.Fit
+		image.BorderSizePixel = 0
 		image.Parent = slot
 
 		local num = Instance.new("TextLabel")
@@ -418,7 +567,7 @@ local function buildHotbar()
 		num.Position = UDim2.new(0, 2, 0, 0)
 		num.BackgroundTransparency = 1
 		num.TextColor3 = Color3.new(1, 1, 1)
-		num.Font = Enum.Font.GothamBold
+		num.Font = Enum.Font.Arcade
 		num.TextSize = 14
 		num.Parent = slot
 
@@ -427,30 +576,23 @@ local function buildHotbar()
 end
 
 local function buildInventory()
-	local columns = 5
-	local cell = 108
-	local gap = 12
-
 	for i, item in ipairs(inventory) do
-		local row = math.floor((i - 1) / columns)
-		local col = (i - 1) % columns
-
 		local btn = Instance.new("TextButton")
-		btn.Size = UDim2.new(0, cell, 0, cell)
-		btn.Position = UDim2.new(0, col * (cell + gap), 0, row * (cell + gap))
+		btn.LayoutOrder = i
 		btn.BorderSizePixel = 0
-		btn.BackgroundColor3 = Color3.fromRGB(49, 58, 54)
+		btn.BackgroundColor3 = Color3.fromRGB(138, 138, 138)
 		btn.Text = ""
 		btn.Parent = inventoryGrid
-		corner(btn, 6)
-		stroke(btn, Color3.fromRGB(235, 232, 210), 0.58, 1)
+		corner(btn, 0)
+		stroke(btn, Color3.fromRGB(65, 65, 65), 0, 2)
 
 		local image = Instance.new("ImageLabel")
 		image.Size = UDim2.new(1, -16, 1, -34)
 		image.Position = UDim2.new(0, 8, 0, 6)
 		image.BackgroundTransparency = 1
 		image.ScaleType = Enum.ScaleType.Fit
-		image.Image = getItemImage(item.iconName)
+		image.BorderSizePixel = 0
+		applyItemIcon(image, item)
 		image.Parent = btn
 
 		local label = Instance.new("TextLabel")
@@ -458,20 +600,25 @@ local function buildInventory()
 		label.Position = UDim2.new(0, 4, 1, -24)
 		label.BackgroundTransparency = 1
 		label.Text = item.title
-		label.TextColor3 = Color3.new(1, 1, 1)
-		label.Font = Enum.Font.GothamBold
+		label.TextColor3 = Color3.fromRGB(40, 40, 40)
+		label.Font = Enum.Font.Arcade
 		label.TextSize = 16
 		label.TextWrapped = true
 		label.Parent = btn
 
 		btn.MouseButton1Click:Connect(function()
-			setSelected(i)
-			setInventoryOpen(false)
+			hotbarAssignments[selected] = item
+			refreshUI()
 		end)
 
 		inventoryButtons[i] = btn
 	end
 end
+
+inventoryLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	local size = inventoryLayout.AbsoluteContentSize
+	inventoryGrid.CanvasSize = UDim2.new(0, 0, 0, size.Y + 12)
+end)
 
 buildHotbar()
 buildInventory()
@@ -482,14 +629,16 @@ if player.Character then
 end
 
 player.CharacterAdded:Connect(function(character)
-	camera = Workspace.CurrentCamera
 	clearCharacterSounds(character)
-	task.wait(0.2)
 
-	local target = getCameraTarget(character)
-	if target and camera then
-		camera.CameraType = Enum.CameraType.Custom
-		camera.CameraSubject = target
+	character:WaitForChild("Humanoid", 5)
+	character:WaitForChild("HumanoidRootPart", 5)
+	attachCamera(character)
+end)
+
+Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+	if player.Character then
+		attachCamera(player.Character)
 	end
 end)
 
@@ -527,6 +676,11 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 		setSelected(10)
 	elseif input.KeyCode == Enum.KeyCode.Space then
 		swimUpHeld = true
+	elseif input.KeyCode == Enum.KeyCode.Backspace then
+		if controlsEnabled() then
+			hotbarAssignments[selected] = nil
+			refreshUI()
+		end
 	elseif input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
 		isCrouching = true
 		SetCrouchState:FireServer(true)
@@ -567,7 +721,7 @@ mouse.Button2Down:Connect(function()
 		return
 	end
 
-	local item = inventory[selected]
+	local item = hotbarAssignments[selected]
 	if not item then
 		return
 	end
@@ -593,9 +747,13 @@ RunService.RenderStepped:Connect(function()
 		inventoryOpen = false
 		swimUpHeld = false
 		activeLiquid = nil
+		updateLocalWaterVisibility(player.Character, hrp, nil)
 		player:SetAttribute("InventoryOpen", false)
 		UserInputService.MouseIconEnabled = true
 		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+		player.CameraMode = Enum.CameraMode.Classic
+		player.CameraMinZoomDistance = 0.5
+		player.CameraMaxZoomDistance = 12
 
 		if isCrouching then
 			isCrouching = false
@@ -604,7 +762,7 @@ RunService.RenderStepped:Connect(function()
 
 		if humanoid then
 			humanoid.WalkSpeed = normalWalkSpeed
-			humanoid.JumpPower = normalJumpPower
+			applyJumpSettings(humanoid, normalJumpPower, normalJumpHeight)
 		end
 
 		return
@@ -613,6 +771,9 @@ RunService.RenderStepped:Connect(function()
 	hotbar.Visible = true
 	crosshair.Visible = not inventoryOpen
 	inventoryFrame.Visible = inventoryOpen
+	player.CameraMode = Enum.CameraMode.LockFirstPerson
+	player.CameraMinZoomDistance = 0.5
+	player.CameraMaxZoomDistance = 0.5
 
 	if inventoryOpen then
 		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
@@ -632,15 +793,13 @@ RunService.RenderStepped:Connect(function()
 	end
 
 	if humanoid and hrp then
-		camera = Workspace.CurrentCamera
-		local cameraTarget = getCameraTarget(player.Character)
-		if camera and cameraTarget then
-			camera.CameraType = Enum.CameraType.Custom
-			camera.CameraSubject = cameraTarget
+		if not camera or camera ~= Workspace.CurrentCamera or camera.CameraSubject ~= humanoid or camera.CameraType ~= Enum.CameraType.Custom then
+			attachCamera(player.Character)
 		end
 
 		local liquidInfo = getCharacterLiquid(player.Character, hrp)
 		local isSwimming = applySwimming(humanoid, hrp, liquidInfo)
+		updateLocalWaterVisibility(player.Character, hrp, liquidInfo)
 
 		if isCrouching and not isSwimming then
 			local moveDirection = humanoid.MoveDirection
