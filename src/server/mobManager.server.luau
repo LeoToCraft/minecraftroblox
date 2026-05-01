@@ -15,6 +15,7 @@ local MOB_DEFS = {
 		MaxCount = 8,
 		SpawnChance = 0.42,
 		Health = 4,
+		FaceYawOffset = math.pi,
 	},
 	{
 		Name = "Pig",
@@ -23,6 +24,7 @@ local MOB_DEFS = {
 		MaxCount = 6,
 		SpawnChance = 0.35,
 		Health = 10,
+		FaceYawOffset = math.pi,
 	},
 	{
 		Name = "Zombie",
@@ -32,6 +34,7 @@ local MOB_DEFS = {
 		SpawnChance = 0.26,
 		Health = 20,
 		Damage = 4,
+		FaceYawOffset = math.pi,
 	},
 }
 
@@ -71,23 +74,84 @@ local function getRoot(model)
 	return root
 end
 
+local function hasJointBetween(a, b)
+	for _, obj in ipairs(a:GetDescendants()) do
+		if obj:IsA("JointInstance") or obj:IsA("WeldConstraint") then
+			if (obj.Part0 == a and obj.Part1 == b) or (obj.Part0 == b and obj.Part1 == a) then
+				return true
+			end
+		end
+	end
+
+	for _, obj in ipairs(b:GetDescendants()) do
+		if obj:IsA("JointInstance") or obj:IsA("WeldConstraint") then
+			if (obj.Part0 == a and obj.Part1 == b) or (obj.Part0 == b and obj.Part1 == a) then
+				return true
+			end
+		end
+	end
+
+	return false
+end
+
+local function weldModelToRoot(model, root)
+	if not root then
+		return
+	end
+
+	for _, part in ipairs(model:GetDescendants()) do
+		if part:IsA("BasePart") then
+			part.Anchored = false
+			part.Massless = part ~= root
+			part.CanCollide = part == root
+			pcall(function()
+				part:SetNetworkOwner(nil)
+			end)
+
+			if part ~= root and not hasJointBetween(root, part) then
+				local weld = Instance.new("WeldConstraint")
+				weld.Name = "MCREMobWeld"
+				weld.Part0 = root
+				weld.Part1 = part
+				weld.Parent = root
+			end
+		end
+	end
+end
+
+local function faceDirection(model, root, direction, yawOffset)
+	if not root or not direction then
+		return
+	end
+
+	local flatDirection = Vector3.new(direction.X, 0, direction.Z)
+	if flatDirection.Magnitude < 0.1 then
+		return
+	end
+
+	local pivot = model:GetPivot()
+	model:PivotTo(CFrame.lookAt(pivot.Position, pivot.Position + flatDirection.Unit) * CFrame.Angles(0, yawOffset or 0, 0))
+end
+
+local function faceTarget(model, root, target, yawOffset)
+	if not root or not target then
+		return
+	end
+
+	local flatTarget = Vector3.new(target.X, root.Position.Y, target.Z)
+	faceDirection(model, root, flatTarget - root.Position, yawOffset)
+end
+
 local function prepareModel(model, def)
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		humanoid.MaxHealth = def.Health or humanoid.MaxHealth
 		humanoid.Health = humanoid.MaxHealth
 		humanoid.WalkSpeed = def.Passive and 6 or 11
+		humanoid.AutoRotate = false
 	end
 
-	for _, part in ipairs(model:GetDescendants()) do
-		if part:IsA("BasePart") then
-			part.Anchored = false
-			part.CanCollide = true
-			pcall(function()
-				part:SetNetworkOwner(nil)
-			end)
-		end
-	end
+	weldModelToRoot(model, getRoot(model))
 end
 
 local function countMobs(folder, def)
@@ -219,6 +283,16 @@ local function runMobBrain(model, def)
 			return
 		end
 
+		task.spawn(function()
+			while model.Parent and root.Parent do
+				local velocity = root.AssemblyLinearVelocity
+				if Vector3.new(velocity.X, 0, velocity.Z).Magnitude > 0.75 then
+					faceDirection(model, root, velocity, def.FaceYawOffset)
+				end
+				task.wait(0.12)
+			end
+		end)
+
 		while model.Parent and root.Parent do
 			local nearest, distance = nearestPlayer(root.Position, DESPAWN_DISTANCE)
 			if not nearest then
@@ -230,11 +304,14 @@ local function runMobBrain(model, def)
 				if def.Passive then
 					local angle = rng:NextNumber(0, math.pi * 2)
 					local offset = Vector3.new(math.cos(angle), 0, math.sin(angle)) * rng:NextNumber(8, 18)
-					humanoid:MoveTo(root.Position + offset)
+					local target = root.Position + offset
+					faceTarget(model, root, target, def.FaceYawOffset)
+					humanoid:MoveTo(target)
 					task.wait(rng:NextNumber(2.0, 4.5))
 				else
 					local targetRoot = nearest.Character and nearest.Character:FindFirstChild("HumanoidRootPart")
 					if targetRoot then
+						faceTarget(model, root, targetRoot.Position, def.FaceYawOffset)
 						humanoid:MoveTo(targetRoot.Position)
 					end
 					task.wait(0.55)

@@ -12,7 +12,7 @@ Players.CharacterAutoLoads = false
 _G.MCRE = _G.MCRE or {}
 local MCRE = _G.MCRE
 
-MCRE.Version = "0.0.14a"
+MCRE.Version = "0.0.16a"
 MCRE.Runtime = MCRE.Runtime or {
 	IsWorldServer = false,
 	WorldLoaded = false,
@@ -554,6 +554,8 @@ end
 local function watchWorldCharacter(player, character)
 	local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 8)
 	if humanoid then
+		humanoid.MaxHealth = 20
+		humanoid.Health = humanoid.MaxHealth
 		humanoid.Died:Connect(function()
 			scheduleWorldRespawn(player, 1.5)
 		end)

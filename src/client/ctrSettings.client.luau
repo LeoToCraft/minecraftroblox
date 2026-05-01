@@ -79,17 +79,17 @@ local LIQUID_BLOCKS = {
 
 local SWIM_SPEEDS = {
 	blcWater = 12,
-	blcLava = 8,
+	blcLava = 7,
 }
 
 local SWIM_RISE_SPEEDS = {
-	blcWater = 12,
-	blcLava = 8,
+	blcWater = 18,
+	blcLava = 14,
 }
 
 local SWIM_FLOAT_SPEEDS = {
-	blcWater = 4,
-	blcLava = 2.5,
+	blcWater = 2.5,
+	blcLava = 1.5,
 }
 
 local highlight = Instance.new("SelectionBox")
@@ -167,6 +167,30 @@ hotbar.BorderSizePixel = 0
 hotbar.Parent = ui
 corner(hotbar, 0)
 stroke(hotbar, Color3.fromRGB(12, 12, 12), 0, 2)
+
+local heartBar = Instance.new("Frame")
+heartBar.Size = UDim2.new(0, 300, 0, 28)
+heartBar.AnchorPoint = Vector2.new(0.5, 1)
+heartBar.Position = UDim2.new(0.5, -125, 1, -82)
+heartBar.BackgroundTransparency = 1
+heartBar.Visible = false
+heartBar.Parent = ui
+
+local hearts = {}
+for i = 1, 10 do
+	local heart = Instance.new("TextLabel")
+	heart.Size = UDim2.new(0, 26, 0, 26)
+	heart.Position = UDim2.new(0, (i - 1) * 28, 0, 0)
+	heart.BackgroundTransparency = 1
+	heart.Text = utf8.char(9829)
+	heart.TextColor3 = Color3.fromRGB(210, 28, 28)
+	heart.TextStrokeColor3 = Color3.fromRGB(55, 0, 0)
+	heart.TextStrokeTransparency = 0.15
+	heart.Font = Enum.Font.Arcade
+	heart.TextSize = 22
+	heart.Parent = heartBar
+	hearts[i] = heart
+end
 
 local inventoryFrame = Instance.new("Frame")
 inventoryFrame.Size = UDim2.new(0, 660, 0, 370)
@@ -420,9 +444,6 @@ local function applySwimming(humanoid, hrp, liquidInfo)
 	activeLiquid = liquidInfo and liquidInfo.Type or nil
 
 	if not liquidInfo then
-		if humanoid:GetState() == Enum.HumanoidStateType.Swimming then
-			humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
-		end
 		applyCrouch()
 		return false
 	end
@@ -434,27 +455,28 @@ local function applySwimming(humanoid, hrp, liquidInfo)
 	local moveDirection = humanoid.MoveDirection
 
 	humanoid.WalkSpeed = swimSpeed
-	humanoid.JumpPower = 0
-	if humanoid:GetState() ~= Enum.HumanoidStateType.Swimming then
-		humanoid:ChangeState(Enum.HumanoidStateType.Swimming)
-	end
+	applyJumpSettings(humanoid, normalJumpPower, normalJumpHeight)
 
-	local targetY = floatSpeed
+	local velocity = hrp.AssemblyLinearVelocity
+	local targetY = nil
 	if swimUpHeld then
 		targetY = riseSpeed
 	elseif isCrouching then
 		targetY = -riseSpeed * 0.7
 	elseif liquidInfo.HeadSubmerged then
-		targetY = floatSpeed * 0.45
+		targetY = floatSpeed
+	elseif velocity.Y < -3 then
+		targetY = -1
 	end
 
 	if moveDirection.Magnitude > 0.05 then
 		humanoid:Move(moveDirection, true)
 	end
 
-	local velocity = hrp.AssemblyLinearVelocity
-	local smoothedY = velocity.Y + (targetY - velocity.Y) * 0.08
-	hrp.AssemblyLinearVelocity = Vector3.new(velocity.X, smoothedY, velocity.Z)
+	if targetY then
+		local smoothedY = velocity.Y + (targetY - velocity.Y) * 0.16
+		hrp.AssemblyLinearVelocity = Vector3.new(velocity.X, smoothedY, velocity.Z)
+	end
 	return true
 end
 
@@ -531,6 +553,29 @@ local function updateInventoryVisuals()
 	inventoryTitle.Text = anyVisible and "Inventory" or "Inventory is empty"
 end
 
+local function assignBlockToHotbar(blockName)
+	local item = INVENTORY_BY_BLOCK[blockName]
+	if not item then
+		return
+	end
+
+	for _, assigned in pairs(hotbarAssignments) do
+		if assigned and assigned.blockName == blockName then
+			return
+		end
+	end
+
+	for i = 1, HOTBAR_SLOT_COUNT do
+		if not hotbarAssignments[i] then
+			hotbarAssignments[i] = item
+			if not hotbarAssignments[selected] then
+				selected = i
+			end
+			return
+		end
+	end
+end
+
 local function refreshUI()
 	for slotIndex, item in pairs(hotbarAssignments) do
 		if item and (ownedCounts[item.blockName] or 0) <= 0 then
@@ -542,6 +587,28 @@ local function refreshUI()
 		updateSlotVisual(i)
 	end
 	updateInventoryVisuals()
+end
+
+local function updateHearts(humanoid)
+	if not humanoid then
+		for _, heart in ipairs(hearts) do
+			heart.TextColor3 = Color3.fromRGB(55, 55, 55)
+			heart.TextStrokeColor3 = Color3.fromRGB(10, 10, 10)
+		end
+		return
+	end
+
+	local maxHealth = math.max(1, humanoid.MaxHealth)
+	local filled = math.ceil(math.clamp(humanoid.Health / maxHealth, 0, 1) * #hearts)
+	for i, heart in ipairs(hearts) do
+		if i <= filled then
+			heart.TextColor3 = Color3.fromRGB(210, 28, 28)
+			heart.TextStrokeColor3 = Color3.fromRGB(55, 0, 0)
+		else
+			heart.TextColor3 = Color3.fromRGB(55, 55, 55)
+			heart.TextStrokeColor3 = Color3.fromRGB(10, 10, 10)
+		end
+	end
 end
 
 local function setSelected(index)
@@ -649,7 +716,7 @@ inventoryLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function
 end)
 
 if InventorySync then
-	InventorySync.OnClientEvent:Connect(function(counts)
+	InventorySync.OnClientEvent:Connect(function(counts, changedBlockName)
 		ownedCounts = {}
 		if type(counts) == "table" then
 			for blockName, count in pairs(counts) do
@@ -657,6 +724,9 @@ if InventorySync then
 					ownedCounts[blockName] = math.floor(count)
 				end
 			end
+		end
+		if changedBlockName and (ownedCounts[changedBlockName] or 0) > 0 then
+			assignBlockToHotbar(changedBlockName)
 		end
 		refreshUI()
 	end)
@@ -785,6 +855,7 @@ RunService.RenderStepped:Connect(function()
 		highlight.Visible = false
 		crosshair.Visible = false
 		hotbar.Visible = false
+		heartBar.Visible = false
 		inventoryFrame.Visible = false
 		inventoryOpen = false
 		swimUpHeld = false
@@ -811,6 +882,7 @@ RunService.RenderStepped:Connect(function()
 	end
 
 	hotbar.Visible = true
+	heartBar.Visible = true
 	crosshair.Visible = not inventoryOpen
 	inventoryFrame.Visible = inventoryOpen
 	player.CameraMode = Enum.CameraMode.LockFirstPerson
@@ -835,10 +907,16 @@ RunService.RenderStepped:Connect(function()
 	end
 
 	if humanoid and hrp then
+		updateHearts(humanoid)
+
 		if not camera or camera ~= Workspace.CurrentCamera or camera.CameraSubject ~= humanoid or camera.CameraType ~= Enum.CameraType.Custom then
 			attachCamera(player.Character)
 		end
+	else
+		updateHearts(nil)
+	end
 
+	if humanoid and hrp then
 		local liquidInfo = getCharacterLiquid(player.Character, hrp)
 		local isSwimming = applySwimming(humanoid, hrp, liquidInfo)
 		updateLocalWaterVisibility(player.Character, hrp, liquidInfo)

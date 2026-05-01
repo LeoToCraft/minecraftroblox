@@ -67,9 +67,9 @@ local function getInventory(player)
 	return inventory
 end
 
-local function syncInventory(player)
+local function syncInventory(player, changedBlockName)
 	if player and player.Parent then
-		InventorySync:FireClient(player, getInventory(player))
+		InventorySync:FireClient(player, getInventory(player), changedBlockName)
 	end
 end
 
@@ -80,7 +80,7 @@ local function addInventoryItem(player, blockName, amount)
 
 	local inventory = getInventory(player)
 	inventory[blockName] = math.max(0, (inventory[blockName] or 0) + amount)
-	syncInventory(player)
+	syncInventory(player, blockName)
 end
 
 local function consumeInventoryItem(player, blockName)
